@@ -1,0 +1,122 @@
+
+[
+  {
+    "id": "MIT",
+    "spdx_id": "MIT",
+    "name": "MIT License",
+    "osi_approved": true,
+    "copyleft_type": "permissive",
+    "permissions": [
+      "commercial use",
+      "modification",
+      "distribution",
+      "private use"
+    ],
+    "conditions": [
+      "include copyright notice",
+      "include license text"
+    ],
+    "limitations": [
+      "no warranty",
+      "no liability"
+    ],
+    "source": "https://spdx.org/licenses/MIT.html"
+  },
+  {
+    "id": "Apache-2.0",
+    "spdx_id": "Apache-2.0",
+    "name": "Apache License 2.0",
+    "osi_approved": true,
+    "copyleft_type": "permissive",
+    "permissions": [
+      "commercial use",
+      "modification",
+      "distribution",
+      "patent use",
+      "private use"
+    ],
+    "conditions": [
+      "include license text",
+      "state significant changes",
+      "preserve applicable copyright and attribution notices",
+      "include NOTICE file contents when applicable"
+    ],
+    "limitations": [
+      "no warranty",
+      "no liability",
+      "trademark rights are not granted"
+    ],
+    "source": "https://spdx.org/licenses/Apache-2.0.html"
+  },
+  {
+    "id": "BSD-3-Clause",
+    "spdx_id": "BSD-3-Clause",
+    "name": "BSD 3-Clause License",
+    "osi_approved": true,
+    "copyleft_type": "permissive",
+    "permissions": [
+      "commercial use",
+      "modification",
+      "distribution",
+      "private use"
+    ],
+    "conditions": [
+      "include copyright notice",
+      "include license text",
+      "do not use contributor names to endorse derived products without permission"
+    ],
+    "limitations": [
+      "no warranty",
+      "no liability"
+    ],
+    "source": "https://spdx.org/licenses/BSD-3-Clause.html"
+  },
+  {
+    "id": "GPL-2.0-only",
+    "spdx_id": "GPL-2.0-only",
+    "name": "GNU General Public License v2.0 only",
+    "osi_approved": true,
+    "copyleft_type": "strong",
+    "permissions": [
+      "commercial use",
+      "modification",
+      "distribution",
+      "private use"
+    ],
+    "conditions": [
+      "provide corresponding source code when required by distribution",
+      "preserve copyright and license notices",
+      "license derivative works under GPL-2.0-only when applicable"
+    ],
+    "limitations": [
+      "no warranty",
+      "no liability",
+      "copyleft obligations may affect combined works"
+    ],
+    "source": "https://spdx.org/licenses/GPL-2.0-only.html"
+  },
+  {
+    "id": "AGPL-3.0-only",
+    "spdx_id": "AGPL-3.0-only",
+    "name": "GNU Affero General Public License v3.0 only",
+    "osi_approved": true,
+    "copyleft_type": "network",
+    "permissions": [
+      "commercial use",
+      "modification",
+      "distribution",
+      "private use"
+    ],
+    "conditions": [
+      "provide corresponding source code when required",
+      "preserve copyright and license notices",
+      "offer source code to users interacting with modified versions over a network"
+    ],
+    "limitations": [
+      "no warranty",
+      "no liability",
+      "copyleft obligations may affect combined works"
+    ],
+    "source": "https://spdx.org/licenses/AGPL-3.0-only.html"
+  }
+]
