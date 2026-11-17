@@ -1,23 +1,30 @@
-# Python virtual environments
-.venv/
-.venv-*/
 
-# Python generated files
+# Python
 __pycache__/
 *.py[cod]
-
-# Testing and linting
+.venv/
 .pytest_cache/
 .ruff_cache/
-.coverage
-htmlcov/
 
-# Environment secrets
+# Secrets: never commit
 .env
 .env.*
 !.env.example
 
-# IDE and OS files
+# Big data stays out of Git
+data/raw/
+
+# Editors / OS
 .vscode/
+.idea/
 .DS_Store
+
+# Additional Python environments
+.venv-*/
+
+# Testing reports
+.coverage
+htmlcov/
+
+# Windows
 Thumbs.db

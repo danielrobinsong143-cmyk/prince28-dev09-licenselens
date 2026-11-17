@@ -1,0 +1,468 @@
+[
+    {
+        "id": "001",
+        "spdx_id": "MIT",
+        "name": "MIT License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "include copyright notice",
+            "include license text"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/MIT.html"
+    },
+    {
+        "id": "002",
+        "spdx_id": "Apache-2.0",
+        "name": "Apache License 2.0",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "patent use",
+            "private use"
+        ],
+        "conditions": [
+            "include license text",
+            "state significant changes",
+            "preserve applicable copyright and attribution notices",
+            "include NOTICE file contents when applicable"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability",
+            "trademark rights are not granted"
+        ],
+        "source": "https://spdx.org/licenses/Apache-2.0.html"
+    },
+    {
+        "id": "003",
+        "spdx_id": "BSD-3-Clause",
+        "name": "BSD 3-Clause License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "include copyright notice",
+            "include license text",
+            "do not use contributor names to endorse derived products without permission"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/BSD-3-Clause.html"
+    },
+    {
+        "id": "004",
+        "spdx_id": "GPL-2.0-only",
+        "name": "GNU General Public License v2.0 only",
+        "osi_approved": true,
+        "copyleft_type": "strong",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "provide corresponding source code when required by distribution",
+            "preserve copyright and license notices",
+            "license derivative works under GPL-2.0-only when applicable"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability",
+            "copyleft obligations may affect combined works"
+        ],
+        "source": "https://spdx.org/licenses/GPL-2.0-only.html"
+    },
+    {
+        "id": "005",
+        "spdx_id": "AGPL-3.0-only",
+        "name": "GNU Affero General Public License v3.0 only",
+        "osi_approved": true,
+        "copyleft_type": "network",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "provide corresponding source code when required",
+            "preserve copyright and license notices",
+            "offer source code to users interacting with modified versions over a network"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability",
+            "copyleft obligations may affect combined works"
+        ],
+        "source": "https://spdx.org/licenses/AGPL-3.0-only.html"
+    },
+    {
+        "id": "006",
+        "spdx_id": "BSD-2-Clause",
+        "name": "BSD 2-Clause Simplified License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "retain copyright notice, conditions and disclaimer in source distributions",
+            "reproduce copyright notice, conditions and disclaimer in binary distributions"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/BSD-2-Clause.html"
+    },
+    {
+        "id": "007",
+        "spdx_id": "ISC",
+        "name": "ISC License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "include copyright notice",
+            "include permission notice in all copies"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/ISC.html"
+    },
+    {
+        "id": "008",
+        "spdx_id": "0BSD",
+        "name": "BSD Zero Clause License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/0BSD.html"
+    },
+    {
+        "id": "009",
+        "spdx_id": "Zlib",
+        "name": "zlib License",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "do not misrepresent the origin of the original software",
+            "clearly mark altered source versions",
+            "do not remove or alter the license notice from source distributions"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/Zlib.html"
+    },
+    {
+        "id": "010",
+        "spdx_id": "BSL-1.0",
+        "name": "Boost Software License 1.0",
+        "osi_approved": true,
+        "copyleft_type": "permissive",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "reproduction",
+            "display",
+            "execution",
+            "transmission"
+        ],
+        "conditions": [
+            "include copyright notices and the complete license statement in copies and derivative works, except those solely in machine-executable object-code form"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/BSL-1.0.html"
+    },
+    {
+        "id": "011",
+        "spdx_id": "MPL-2.0",
+        "name": "Mozilla Public License 2.0",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "patent use",
+            "private use"
+        ],
+        "conditions": [
+            "disclose source code of modifications to MPL-covered files",
+            "include license and copyright notices",
+            "distribute covered files under MPL-2.0"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability",
+            "no trademark rights"
+        ],
+        "source": "https://spdx.org/licenses/MPL-2.0.html"
+    },
+    {
+        "id": "012",
+        "spdx_id": "EPL-2.0",
+        "name": "Eclipse Public License 2.0",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "patent use",
+            "private use"
+        ],
+        "conditions": [
+            "include copyright and license notices",
+            "provide source code for covered modifications when distributing",
+            "comply with patent provisions"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/EPL-2.0.html"
+    },
+    {
+        "id": "013",
+        "spdx_id": "LGPL-2.1-only",
+        "name": "GNU Lesser General Public License v2.1 only",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use",
+            "library linking"
+        ],
+        "conditions": [
+            "provide source code for LGPL-covered modifications",
+            "preserve notices",
+            "allow users to replace or relink the library under the license terms"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/LGPL-2.1-only.html"
+    },
+    {
+        "id": "014",
+        "spdx_id": "LGPL-3.0-only",
+        "name": "GNU Lesser General Public License v3.0 only",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use",
+            "library linking"
+        ],
+        "conditions": [
+            "provide source code for LGPL-covered modifications",
+            "preserve notices",
+            "provide required installation or relinking information where applicable"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/LGPL-3.0-only.html"
+    },
+    {
+        "id": "015",
+        "spdx_id": "GPL-3.0-only",
+        "name": "GNU General Public License v3.0 only",
+        "osi_approved": true,
+        "copyleft_type": "strong",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "patent use",
+            "private use"
+        ],
+        "conditions": [
+            "disclose source code when distributing covered software",
+            "license derivative works under GPL-3.0-only",
+            "preserve copyright and license notices"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability",
+            "no trademark rights"
+        ],
+        "source": "https://spdx.org/licenses/GPL-3.0-only.html"
+    },
+    {
+        "id": "016",
+        "spdx_id": "EUPL-1.2",
+        "name": "European Union Public License 1.2",
+        "osi_approved": true,
+        "copyleft_type": "strong",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "provide source code when distributing covered works",
+            "preserve copyright and license notices",
+            "license derivative works under EUPL-1.2 or an allowed compatible license"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/EUPL-1.2.html"
+    },
+    {
+        "id": "017",
+        "spdx_id": "CDDL-1.1",
+        "name": "Common Development and Distribution License 1.1",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "make source code of covered files available under CDDL",
+            "preserve notices",
+            "include the license with distributions"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/CDDL-1.1.html"
+    },
+    {
+        "id": "018",
+        "spdx_id": "Artistic-2.0",
+        "name": "Artistic License 2.0",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "include copyright and license notices",
+            "follow the license requirements when distributing modified versions",
+            "make source available under the applicable license terms"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/Artistic-2.0.html"
+    },
+    {
+        "id": "019",
+        "spdx_id": "MS-RL",
+        "name": "Microsoft Reciprocal License",
+        "osi_approved": true,
+        "copyleft_type": "weak",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "private use"
+        ],
+        "conditions": [
+            "make source code of modified files available under MS-RL when distributing",
+            "include license and copyright notices"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/MS-RL.html"
+    },
+    {
+        "id": "020",
+        "spdx_id": "OSL-3.0",
+        "name": "Open Software License 3.0",
+        "osi_approved": true,
+        "copyleft_type": "strong",
+        "permissions": [
+            "commercial use",
+            "modification",
+            "distribution",
+            "patent use",
+            "private use"
+        ],
+        "conditions": [
+            "make source code of derivative works available under OSL-3.0",
+            "include copyright and license notices",
+            "provide required notices when distributing"
+        ],
+        "limitations": [
+            "no warranty",
+            "no liability"
+        ],
+        "source": "https://spdx.org/licenses/OSL-3.0.html"
+    }
+]
