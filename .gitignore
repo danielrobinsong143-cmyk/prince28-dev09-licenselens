@@ -1,0 +1,23 @@
+# Python virtual environments
+.venv/
+.venv-*/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Testing and linting
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# IDE and OS files
+.vscode/
+.DS_Store
+Thumbs.db
