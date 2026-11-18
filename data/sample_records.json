@@ -2,7 +2,7 @@
     {
         "id": "001",
         "spdx_id": "MIT",
-        "name": "MIT License",
+        "name": "MIT License - Update Test",
         "osi_approved": true,
         "copyleft_type": "permissive",
         "permissions": [
@@ -19,7 +19,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/MIT.html"
+        "source_url": "https://spdx.org/licenses/MIT.html"
     },
     {
         "id": "002",
@@ -45,7 +45,7 @@
             "no liability",
             "trademark rights are not granted"
         ],
-        "source": "https://spdx.org/licenses/Apache-2.0.html"
+        "source_url": "https://spdx.org/licenses/Apache-2.0.html"
     },
     {
         "id": "003",
@@ -68,7 +68,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/BSD-3-Clause.html"
+        "source_url": "https://spdx.org/licenses/BSD-3-Clause.html"
     },
     {
         "id": "004",
@@ -92,7 +92,7 @@
             "no liability",
             "copyleft obligations may affect combined works"
         ],
-        "source": "https://spdx.org/licenses/GPL-2.0-only.html"
+        "source_url": "https://spdx.org/licenses/GPL-2.0-only.html"
     },
     {
         "id": "005",
@@ -116,7 +116,7 @@
             "no liability",
             "copyleft obligations may affect combined works"
         ],
-        "source": "https://spdx.org/licenses/AGPL-3.0-only.html"
+        "source_url": "https://spdx.org/licenses/AGPL-3.0-only.html"
     },
     {
         "id": "006",
@@ -138,7 +138,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/BSD-2-Clause.html"
+        "source_url": "https://spdx.org/licenses/BSD-2-Clause.html"
     },
     {
         "id": "007",
@@ -160,7 +160,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/ISC.html"
+        "source_url": "https://spdx.org/licenses/ISC.html"
     },
     {
         "id": "008",
@@ -179,7 +179,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/0BSD.html"
+        "source_url": "https://spdx.org/licenses/0BSD.html"
     },
     {
         "id": "009",
@@ -202,7 +202,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/Zlib.html"
+        "source_url": "https://spdx.org/licenses/Zlib.html"
     },
     {
         "id": "010",
@@ -226,7 +226,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/BSL-1.0.html"
+        "source_url": "https://spdx.org/licenses/BSL-1.0.html"
     },
     {
         "id": "011",
@@ -251,7 +251,7 @@
             "no liability",
             "no trademark rights"
         ],
-        "source": "https://spdx.org/licenses/MPL-2.0.html"
+        "source_url": "https://spdx.org/licenses/MPL-2.0.html"
     },
     {
         "id": "012",
@@ -275,7 +275,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/EPL-2.0.html"
+        "source_url": "https://spdx.org/licenses/EPL-2.0.html"
     },
     {
         "id": "013",
@@ -299,7 +299,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/LGPL-2.1-only.html"
+        "source_url": "https://spdx.org/licenses/LGPL-2.1-only.html"
     },
     {
         "id": "014",
@@ -323,7 +323,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/LGPL-3.0-only.html"
+        "source_url": "https://spdx.org/licenses/LGPL-3.0-only.html"
     },
     {
         "id": "015",
@@ -348,7 +348,7 @@
             "no liability",
             "no trademark rights"
         ],
-        "source": "https://spdx.org/licenses/GPL-3.0-only.html"
+        "source_url": "https://spdx.org/licenses/GPL-3.0-only.html"
     },
     {
         "id": "016",
@@ -371,7 +371,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/EUPL-1.2.html"
+        "source_url": "https://spdx.org/licenses/EUPL-1.2.html"
     },
     {
         "id": "017",
@@ -394,7 +394,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/CDDL-1.1.html"
+        "source_url": "https://spdx.org/licenses/CDDL-1.1.html"
     },
     {
         "id": "018",
@@ -417,7 +417,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/Artistic-2.0.html"
+        "source_url": "https://spdx.org/licenses/Artistic-2.0.html"
     },
     {
         "id": "019",
@@ -439,7 +439,7 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/MS-RL.html"
+        "source_url": "https://spdx.org/licenses/MS-RL.html"
     },
     {
         "id": "020",
@@ -463,6 +463,6 @@
             "no warranty",
             "no liability"
         ],
-        "source": "https://spdx.org/licenses/OSL-3.0.html"
+        "source_url": "https://spdx.org/licenses/OSL-3.0.html"
     }
 ]
