@@ -2,7 +2,7 @@
     {
         "id": "001",
         "spdx_id": "MIT",
-        "name": "MIT License - Update Test",
+        "name": "MIT License",
         "osi_approved": true,
         "copyleft_type": "permissive",
         "permissions": [
