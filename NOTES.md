@@ -135,7 +135,7 @@ Readiness after restarting Postgres: `{"status":"ready","checks":{"database":tru
 
 After `docker compose down` and `docker compose up -d`, the API returned healthy and the migration service exited with code 0. The loader reported `records=20 inserted=0 updated=0 unchanged=20`.
 
-## D04 · Docker, Compose and tests
+## D04 Â· Docker, Compose and tests
 
 ### The image
 
@@ -155,10 +155,10 @@ Clean-clone `docker compose ps -a` (API host port 8001 because port 8000 was occ
 
 ```text
 NAME                    IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                      PORTS
-licenselens-api-1       licenselens-api          "sh -c 'exec uvicorn…'"   api       25 seconds ago   Up 15 seconds (healthy)     0.0.0.0:8001->8000/tcp
-licenselens-db-1        pgvector/pgvector:pg17   "docker-entrypoint.s…"   db        25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:5433->5432/tcp
-licenselens-migrate-1   licenselens-migrate      "sh -c 'alembic upgr…'"   migrate   25 seconds ago   Exited (0) 15 seconds ago
-licenselens-redis-1     redis:7-alpine           "docker-entrypoint.s…"   redis     25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:6379->6379/tcp
+licenselens-api-1       licenselens-api          "sh -c 'exec uvicornâ€¦'"   api       25 seconds ago   Up 15 seconds (healthy)     0.0.0.0:8001->8000/tcp
+licenselens-db-1        pgvector/pgvector:pg17   "docker-entrypoint.sâ€¦"   db        25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:5433->5432/tcp
+licenselens-migrate-1   licenselens-migrate      "sh -c 'alembic upgrâ€¦'"   migrate   25 seconds ago   Exited (0) 15 seconds ago
+licenselens-redis-1     redis:7-alpine           "docker-entrypoint.sâ€¦"   redis     25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:6379->6379/tcp
 ```
 
 Migration output, first up from the clean clone:
