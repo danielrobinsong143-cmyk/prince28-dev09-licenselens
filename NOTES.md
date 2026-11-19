@@ -104,3 +104,10 @@ After sequential scans were disabled for the session, PostgreSQL used the GIN in
 This confirms that the JSONB GIN index is correctly configured and usable for metadata containment queries.
 
 The forced index plan was slower for this small dataset. Indexes become more valuable when tables grow and selective queries can avoid scanning large numbers of rows.
+
+## Docker Image Build
+
+- Initial build: approximately 1 minute 30 seconds, including base image and dependency downloads.
+- Source-only rebuild: 15.4 seconds; the `uv sync --locked --no-install-project` dependency layer was cached.
+- Image size: 300 MB.
+- Runtime user check: `uid=999(app) gid=999(app) groups=999(app)`.
