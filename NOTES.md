@@ -134,3 +134,68 @@ Readiness after restarting Postgres: `{"status":"ready","checks":{"database":tru
 ### Persistent volume and idempotent seed
 
 After `docker compose down` and `docker compose up -d`, the API returned healthy and the migration service exited with code 0. The loader reported `records=20 inserted=0 updated=0 unchanged=20`.
+
+## D04 · Docker, Compose and tests
+
+### The image
+
+```text
+IMAGE             ID             DISK USAGE   CONTENT SIZE   EXTRA
+licenselens:dev   98998015d864        300MB           70MB
+uid=999(app) gid=999(app) groups=999(app)
+```
+
+- Size: 300 MB (target: under 400 MB).
+- First build: approximately 90 s, including base image and dependency downloads. Source-only rebuild: 15.4 s.
+- `uv sync --locked --no-install-project --no-dev` was `CACHED` because its `uv.lock` and `pyproject.toml` inputs had not changed when only source code changed.
+
+### The stack
+
+Clean-clone `docker compose ps -a` (API host port 8001 because port 8000 was occupied):
+
+```text
+NAME                    IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                      PORTS
+licenselens-api-1       licenselens-api          "sh -c 'exec uvicorn…'"   api       25 seconds ago   Up 15 seconds (healthy)     0.0.0.0:8001->8000/tcp
+licenselens-db-1        pgvector/pgvector:pg17   "docker-entrypoint.s…"   db        25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:5433->5432/tcp
+licenselens-migrate-1   licenselens-migrate      "sh -c 'alembic upgr…'"   migrate   25 seconds ago   Exited (0) 15 seconds ago
+licenselens-redis-1     redis:7-alpine           "docker-entrypoint.s…"   redis     25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:6379->6379/tcp
+```
+
+Migration output, first up from the clean clone:
+
+```text
+records=20 inserted=20 updated=0 unchanged=0
+```
+
+Migration output, after `docker compose down` and `docker compose up -d` (volume retained):
+
+```text
+records=20 inserted=0 updated=0 unchanged=20
+```
+
+The committed clean clone had no `.venv` or `.env`; it built and reached a healthy stack. The temporary clone and its volume were removed afterward.
+
+### Breaking the database on purpose
+
+```text
+Before stopping DB, /health: {"status":"ok","app":"licenselens","env":"local"}
+Before stopping DB, /ready:  {"status":"ready","checks":{"database":true}}
+DB stopped, /health:        {"status":"ok","app":"licenselens","env":"local"}
+DB stopped, /ready:          {"status":"not_ready","checks":{"database":false}}
+DB started, /ready:         {"status":"ready","checks":{"database":true}}
+```
+
+The load balancer should stop routing requests while readiness is false. Restarting the API cannot repair a database outage; the live process recovers its database checks when Postgres returns.
+
+### Tests and coverage
+
+```text
+uv run poe test              ? 16 passed
+uv run poe test-integration  ? 7 passed (ran twice; 7 passed both times)
+coverage TOTAL, unit only    ? 83%
+coverage TOTAL, with integration tests ? 92%
+```
+
+The Poe task list contains seven tasks: `dev`, `lint`, `test`, `cov`, `migrate`, `seed`, and `test-integration`. `uv run poe lint` finished with `31 files already formatted` and `All checks passed!`.
+
+Coverage still misses `logging_setup.py:16-28` (the logging formatter and exception fields) and `api/deps.py:40-41` (the database-check exception path). Logging serialization merits a focused test; the readiness failure path was exercised manually by stopping Postgres, though it is not covered by the automated integration suite.

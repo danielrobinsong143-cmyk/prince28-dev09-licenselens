@@ -53,3 +53,29 @@ uv run ruff check .
 ## Target adjustments
 
 The initial record lookup target is 500 ms to provide a practical performance goal for the first version. The answer cost target is Rs 1.00 per question to allow flexibility while evaluating the AI model and retrieval pipeline. Both targets can be tightened after performance and cost measurements.
+
+## Run locally in one command
+
+You need Docker Desktop running. From a fresh clone:
+
+```bash
+docker compose up --build
+```
+
+This starts Postgres (with pgvector), Redis, runs the migrations and loads the sample data once, then starts the API.
+
+- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Liveness: [http://localhost:8000/health](http://localhost:8000/health)
+- Readiness (checks the database): [http://localhost:8000/ready](http://localhost:8000/ready)
+
+Stop with `Ctrl+C`, then `docker compose down`. Add `-v` to also delete the database volume.
+
+## Develop and test
+
+| Task | Mac / Linux | Windows |
+|---|---|---|
+| Run the API with reload | `make dev` | `uv run poe dev` |
+| Unit tests (no network) | `make test` | `uv run poe test` |
+| Integration tests (needs `docker compose up`) | `make test-integration` | `uv run poe test-integration` |
+| Coverage report | `make cov` | `uv run poe cov` |
+| Lint and format check | `make lint` | `uv run poe lint` |
