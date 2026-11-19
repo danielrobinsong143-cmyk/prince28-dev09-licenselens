@@ -111,3 +111,26 @@ The forced index plan was slower for this small dataset. Indexes become more val
 - Source-only rebuild: 15.4 seconds; the `uv sync --locked --no-install-project` dependency layer was cached.
 - Image size: 300 MB.
 - Runtime user check: `uid=999(app) gid=999(app) groups=999(app)`.
+
+## Docker Compose Stack
+
+- `docker compose up --build -d` built the API and migration images. PostgreSQL (`pgvector/pgvector:pg17`) and Redis became healthy; migrations exited with code 0; the API became healthy.
+- The API returned 20 records from `GET /v1/documents`.
+- `app_test` exists alongside `app`, created by `docker/initdb/01-create-test-db.sql`.
+- Port 8000 was already occupied on this machine, so Compose was verified with `API_PORT=8001`; the default remains 8000.
+
+### Health and database recovery
+
+Initial health: `{"status":"ok","app":"licenselens","env":"local"}`
+
+Initial readiness: `{"status":"ready","checks":{"database":true}}`
+
+Health with Postgres stopped: `{"status":"ok","app":"licenselens","env":"local"}`
+
+Readiness with Postgres stopped: `{"status":"not_ready","checks":{"database":false}}`
+
+Readiness after restarting Postgres: `{"status":"ready","checks":{"database":true}}`
+
+### Persistent volume and idempotent seed
+
+After `docker compose down` and `docker compose up -d`, the API returned healthy and the migration service exited with code 0. The loader reported `records=20 inserted=0 updated=0 unchanged=20`.
