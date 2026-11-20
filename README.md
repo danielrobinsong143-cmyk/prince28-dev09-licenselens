@@ -1,9 +1,17 @@
-
 # LicenseLens
+
+[![CI](https://github.com/danielrobinsong143-cmyk/prince28-dev09-licenselens/actions/workflows/ci.yml/badge.svg)](https://github.com/danielrobinsong143-cmyk/prince28-dev09-licenselens/actions/workflows/ci.yml)
+
+[![Live](https://img.shields.io/website?url=https%3A%2F%2Flicenselens-api.onrender.com%2Fhealth&label=live)](https://licenselens-api.onrender.com/docs)
+
+[![Uptime (30 days)](https://img.shields.io/uptimerobot/ratio/m804746153-b82b8cc47bb19bfc51cc1489?label=uptime)](https://licenselens-api.onrender.com/health)
+
+
+**Live:** https://licenselens-api.onrender.com · [API docs](https://licenselens-api.onrender.com/docs) · [health](https://licenselens-api.onrender.com/health)
 
 Explains open-source licences and checks whether a set of dependencies can be used in a closed-source commercial product.
 
-**Status:** Day 1 foundation (FastAPI skeleton, quality gates). Live URL from Day 5.
+**Status:** Week 1 complete · live at https://licenselens-api.onrender.com
 
 ## Who it's for
 
@@ -20,7 +28,8 @@ SPDX license list data (licence texts and metadata), choosealicense.com licence 
 - https://github.com/spdx/license-list-data
 - https://github.com/github/choosealicense.com
 - https://github.com/aboutcode-org/scancode-toolkit
-- Terms: SPDX data CC0; choosealicense MIT; ScanCode data CC-BY-4.0.
+
+Terms: SPDX data CC0; choosealicense MIT; ScanCode data CC-BY-4.0.
 
 ## Hardest problem (my interview story)
 
@@ -50,6 +59,7 @@ Then open http://localhost:8000/docs
 uv run pytest
 uv run ruff check .
 ```
+
 ## Target adjustments
 
 The initial record lookup target is 500 ms to provide a practical performance goal for the first version. The answer cost target is Rs 1.00 per question to allow flexibility while evaluating the AI model and retrieval pipeline. Both targets can be tightened after performance and cost measurements.
@@ -64,9 +74,9 @@ docker compose up --build
 
 This starts Postgres (with pgvector), Redis, runs the migrations and loads the sample data once, then starts the API.
 
-- API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Liveness: [http://localhost:8000/health](http://localhost:8000/health)
-- Readiness (checks the database): [http://localhost:8000/ready](http://localhost:8000/ready)
+- API docs: http://localhost:8000/docs
+- Liveness: http://localhost:8000/health
+- Readiness (checks the database): http://localhost:8000/ready
 
 Stop with `Ctrl+C`, then `docker compose down`. Add `-v` to also delete the database volume.
 
