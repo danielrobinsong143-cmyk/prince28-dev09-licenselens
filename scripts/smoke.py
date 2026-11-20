@@ -1,4 +1,3 @@
-
 """Smoke test a deployed app: is the new version live, alive and ready?
 
     uv run python scripts/smoke.py https://your-app.onrender.com --expect-version <sha>
@@ -16,9 +15,7 @@ import urllib.request
 
 def get(url: str) -> tuple[int | None, object]:
     """GET a URL and return (status, parsed JSON body)."""
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "smoke-test"}
-    )
+    request = urllib.request.Request(url, headers={"User-Agent": "smoke-test"})
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
             return response.status, json.loads(response.read() or b"null")
@@ -62,24 +59,17 @@ def main() -> int:
         version = body.get("version") if isinstance(body, dict) else None
         return status == 200 and args.expect_version in (None, version)
 
-    ok, status, body = wait_for(
-        f"{base}/health", is_new_version, deadline, args.interval
-    )
+    ok, status, body = wait_for(f"{base}/health", is_new_version, deadline, args.interval)
 
     if not ok:
-        print(
-            f"FAIL /health never reported version "
-            f"{args.expect_version}: {status} {body}"
-        )
+        print(f"FAIL /health never reported version {args.expect_version}: {status} {body}")
         return 1
 
     print(f"ok   /health -> 200, version {body.get('version')}")
 
     # 2. Check database readiness.
     soon = min(deadline, time.monotonic() + 60)
-    ok, status, body = wait_for(
-        f"{base}/ready", lambda s, b: s == 200, soon, 5
-    )
+    ok, status, body = wait_for(f"{base}/ready", lambda s, b: s == 200, soon, 5)
 
     print(f"{'ok  ' if ok else 'FAIL'} /ready -> {status} {body}")
 
@@ -90,10 +80,7 @@ def main() -> int:
     status, body = get(f"{base}/v1/documents?limit=1")
     ok = status == 200 and isinstance(body, dict) and "items" in body
 
-    print(
-        f"{'ok  ' if ok else 'FAIL'} "
-        f"/v1/documents?limit=1 -> {status}"
-    )
+    print(f"{'ok  ' if ok else 'FAIL'} /v1/documents?limit=1 -> {status}")
 
     if not ok:
         print(body)
