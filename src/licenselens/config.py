@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     db_pool_size: int = 5
     db_max_overflow: int = 5
+    # Commit this image was built from
+    git_sha: str = "dev"
 
     @field_validator("database_url")
     @classmethod
