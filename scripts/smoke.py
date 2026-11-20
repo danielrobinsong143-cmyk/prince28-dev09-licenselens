@@ -1,0 +1,107 @@
+
+"""Smoke test a deployed app: is the new version live, alive and ready?
+
+    uv run python scripts/smoke.py https://your-app.onrender.com --expect-version <sha>
+
+Exit code 0 = passed, 1 = failed. Standard library only.
+"""
+
+import argparse
+import json
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+def get(url: str) -> tuple[int | None, object]:
+    """GET a URL and return (status, parsed JSON body)."""
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "smoke-test"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            return response.status, json.loads(response.read() or b"null")
+    except urllib.error.HTTPError as error:
+        try:
+            return error.code, json.loads(error.read() or b"null")
+        except ValueError:
+            return error.code, None
+    except (OSError, ValueError) as error:
+        return None, str(error)
+
+
+def wait_for(url: str, ok, deadline: float, interval: int):
+    """Retry until successful or the deadline passes."""
+    while True:
+        status, body = get(url)
+        if ok(status, body):
+            return True, status, body
+
+        if time.monotonic() > deadline:
+            return False, status, body
+
+        detail = body.get("version", "")[:7] if isinstance(body, dict) else ""
+        print(f"  waiting: {url} -> {status} {detail}".rstrip(), flush=True)
+        time.sleep(interval)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("base_url")
+    parser.add_argument("--expect-version", help="commit SHA")
+    parser.add_argument("--timeout", type=int, default=600)
+    parser.add_argument("--interval", type=int, default=10)
+    args = parser.parse_args()
+
+    base = args.base_url.rstrip("/")
+    deadline = time.monotonic() + args.timeout
+
+    # 1. Wait for the expected application version.
+    def is_new_version(status, body):
+        version = body.get("version") if isinstance(body, dict) else None
+        return status == 200 and args.expect_version in (None, version)
+
+    ok, status, body = wait_for(
+        f"{base}/health", is_new_version, deadline, args.interval
+    )
+
+    if not ok:
+        print(
+            f"FAIL /health never reported version "
+            f"{args.expect_version}: {status} {body}"
+        )
+        return 1
+
+    print(f"ok   /health -> 200, version {body.get('version')}")
+
+    # 2. Check database readiness.
+    soon = min(deadline, time.monotonic() + 60)
+    ok, status, body = wait_for(
+        f"{base}/ready", lambda s, b: s == 200, soon, 5
+    )
+
+    print(f"{'ok  ' if ok else 'FAIL'} /ready -> {status} {body}")
+
+    if not ok:
+        return 1
+
+    # 3. Check a real database-backed endpoint.
+    status, body = get(f"{base}/v1/documents?limit=1")
+    ok = status == 200 and isinstance(body, dict) and "items" in body
+
+    print(
+        f"{'ok  ' if ok else 'FAIL'} "
+        f"/v1/documents?limit=1 -> {status}"
+    )
+
+    if not ok:
+        print(body)
+        return 1
+
+    print("Smoke test passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
