@@ -6,6 +6,21 @@ def test_health_endpoint(client):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["version"] == "dev"
+
+
+def test_git_sha_comes_from_the_environment(monkeypatch):
+    from licenselens.config import Settings
+
+    monkeypatch.setenv("GIT_SHA", "3f2c1ab")
+
+    settings = Settings(
+        app_env="ci",
+        database_url="postgresql://localhost/db",
+        _env_file=None,
+    )
+
+    assert settings.git_sha == "3f2c1ab"
 
 
 def test_ready_endpoint(client):
