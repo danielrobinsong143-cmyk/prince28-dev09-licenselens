@@ -199,3 +199,34 @@ coverage TOTAL, with integration tests ? 92%
 The Poe task list contains seven tasks: `dev`, `lint`, `test`, `cov`, `migrate`, `seed`, and `test-integration`. `uv run poe lint` finished with `31 files already formatted` and `All checks passed!`.
 
 Coverage still misses `logging_setup.py:16-28` (the logging formatter and exception fields) and `api/deps.py:40-41` (the database-check exception path). Logging serialization merits a focused test; the readiness failure path was exercised manually by stopping Postgres, though it is not covered by the automated integration suite.
+
+## D05 · CI/CD and going live
+
+- Live URL: https://licenselens-api.onrender.com
+- GitHub repository: https://github.com/danielrobinsong143-cmyk/prince28-dev09-licenselens
+- CI workflow: https://github.com/danielrobinsong143-cmyk/prince28-dev09-licenselens/actions
+- UptimeRobot: Checks `/health` every 5 minutes; email alerts enabled.
+
+### Deployment
+
+- First automatic deployment: CD workflow run on main — record the run link and completion time.
+- Smoke test: `/health`, `/ready`, and `/v1/documents?limit=1` returned 200.
+- Production URL: https://licenselens-api.onrender.com
+
+### Rollback drill
+
+- Rolled back to SHA: `0cf5b2a77a4988d0b7358740622e2d4334c9f0f1`
+- Rolled-back deployment: successful; smoke test passed.
+- Roll-forward attempt to SHA: `c4b21eec839145a24f120fdbb6092706bacf5a79` — deployment hook returned HTTP 400. Verify the final deployment status before marking the roll-forward drill complete.
+
+### Where my secrets live
+
+- Neon connection string: GitHub Secret `DATABASE_URL` and Render environment. Not in Git or the Docker image.
+- Render deploy hook: GitHub Secret `RENDER_DEPLOY_HOOK` only.
+- UptimeRobot monitor-specific API key: used only in the README badge. Never commit account-wide API keys.
+
+### Monitoring
+
+- UptimeRobot checks `/health` every 5 minutes.
+- Email alerts are enabled.
+- One thing that would make my live app faster on its first request: Render may need to wake up after an idle period.
