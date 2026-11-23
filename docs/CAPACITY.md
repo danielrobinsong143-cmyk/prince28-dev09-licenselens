@@ -38,7 +38,13 @@ Assumptions: 4 characters per token, 400-token chunks, 768-dimension embeddings 
 
 2. **Do the vectors and text fit in my free Postgres?**
 
-   The estimated requirement is 119 MB for vectors and 65 MB for text, approximately 184 MB combined. I need to compare this with the actual storage limit of my free Postgres database before confirming.
+   Yes. Neon Free provides 1 GB of Postgres storage per project.
+   My estimated requirement is 184 MB (119 MB vectors + 65 MB text),
+   approximately 18.4% of the available storage.
+
+   This leaves roughly 816 MB for other database data and overhead.
+   I will monitor actual database usage after importing and indexing
+   the corpus because vector indexes and metadata can increase storage.
 
 3. **Which number am I least sure about, and how will I measure it better?**
 
