@@ -232,3 +232,12 @@ Coverage still misses `logging_setup.py:16-28` (the logging formatter and except
 - UptimeRobot checks `/health` every 5 minutes.
 - Email alerts are enabled.
 - One thing that would make my live app faster on its first request: Render may need to wake up after an idle period.
+
+### Kill and resume
+
+- Run 1: Pressed Ctrl+C after 5 files had downloaded.
+- Run 2: downloaded=7, skipped=5.
+- Run 3: downloaded=0, skipped=12.
+- Result: The downloader resumed successfully without downloading completed files again.
+
+**What I learned:** The manifest tracks completed downloads. When the downloader runs again, it skips files that are already recorded and available locally.
