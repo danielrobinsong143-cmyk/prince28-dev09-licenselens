@@ -241,3 +241,47 @@ Coverage still misses `logging_setup.py:16-28` (the logging formatter and except
 - Result: The downloader resumed successfully without downloading completed files again.
 
 **What I learned:** The manifest tracks completed downloads. When the downloader runs again, it skips files that are already recorded and available locally.
+
+
+## D06 · Collecting the corpus
+
+- Start target: SPDX list + ChooseALicense metadata
+- Collected today: **818 files, 7,376 pages, 22.3 MB**
+- Doors used: **Git repository** (SPDX and ChooseALicense)
+
+### Licence check
+
+| Source | Licence or terms, in my words | May I show full text in answers? |
+|---|---|---|
+| SPDX | CC0; public-domain dedication | Yes, subject to checking the source record |
+| ChooseALicense | Content CC BY 3.0; repository code MIT | Yes, with appropriate attribution for CC BY content |
+| ScanCode | CC BY 4.0, as stated on the project card | With attribution and applicable licence conditions |
+
+### robots.txt
+
+- Site checked: github.com
+- Checked: https://github.com/robots.txt
+- Relevant rules: GitHub disallows crawling raw paths, `.git` paths, archive paths and zipball paths for general user agents.
+- Collection method: Git repository clone, not individual URL crawling.
+- No blocked records were reported during my collection.
+- I will continue respecting robots.txt when using the URL and sitemap collection methods.
+
+### Kill and resume
+
+- Run 1: Ctrl+C after 5 files
+- Run 2: downloaded=7, skipped=5
+- Run 3: downloaded=0, skipped=12
+- Result: Completed files were skipped on subsequent runs.
+
+### Capacity
+
+- Tokens per page: approximately 750 (estimated)
+- Full corpus: 13.53 million tokens
+- Estimated chunks: 38,889
+- One-time embedding estimate: Rs 222
+- Estimated vector storage: 119 MB
+- Estimated text storage: 65 MB
+
+### One thing that went wrong today, and how I fixed it
+
+The first documentation review showed that my Day 06 notes were missing. I checked the dataset and capacity reports and added a dedicated Day 06 section to record the corpus, licence checks, resume test and capacity estimates.
