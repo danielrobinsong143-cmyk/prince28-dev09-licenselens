@@ -6,7 +6,7 @@ import pymupdf
 import pytest
 
 from licenselens.ingest import parse
-from licenselens.ingest.parse import ParseError, parse_file
+from licenselens.ingest.parse import ParseError, parse_file, split_pages
 
 BODY = "Dengue is a viral infection spread by Aedes mosquitoes and is common after the rains."
 
@@ -203,3 +203,13 @@ def test_comments_inside_code_blocks_are_not_headings(tmp_path):
     found, _ = parse.headings_in(doc.pages[0].text)
     assert found == [(1, "Install"), (2, "Next steps")]
     assert doc.title == "Install"
+
+
+def test_split_pages_splits_long_paragraph():
+    text = "x" * 7000
+
+    pages = split_pages(text, size=3000)
+
+    assert len(pages) == 3
+    assert all(len(page) <= 3000 for page in pages)
+    assert "".join(pages) == text

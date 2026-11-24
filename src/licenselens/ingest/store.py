@@ -57,6 +57,13 @@ async def save_document(
         ],
     )
 
+    existing = await session.scalar(
+        select(Document).where(Document.external_id == document.external_id)
+    )
+    if existing:
+        await session.delete(existing)
+        await session.flush()
+
     session.add(document)
 
     await session.execute(delete(ParseFailure).where(ParseFailure.path == record["path"]))

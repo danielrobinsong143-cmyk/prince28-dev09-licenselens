@@ -313,20 +313,37 @@ def markup_to_markdown(text: str, suffix: str) -> str:
 
 
 def split_pages(text: str, size: int = PAGE_CHARS) -> list[str]:
-    """Split long text into pages of approximately 3000 characters."""
-    pages, current, length = [], [], 0
+    """Split long text into pages of approximately `size` characters."""
+    pages: list[str] = []
+    current: list[str] = []
+    length = 0
+
+    def flush() -> None:
+        nonlocal current, length
+        if current:
+            pages.append("\n\n".join(current))
+            current = []
+            length = 0
 
     for para in re.split(r"\n\s*\n", text):
-        if current and length + len(para) > size:
-            pages.append("\n\n".join(current))
-            current, length = [], 0
+        while len(para) > size:
+            flush()
+
+            # Prefer splitting at whitespace to avoid cutting words.
+            cut = para.rfind(" ", 0, size)
+            if cut < size // 2:
+                cut = size
+
+            pages.append(para[:cut])
+            para = para[cut:].lstrip()
+
+        if current and length + len(para) + 2 > size:
+            flush()
 
         current.append(para)
-        length += len(para)
+        length += len(para) + (2 if len(current) > 1 else 0)
 
-    if current:
-        pages.append("\n\n".join(current))
-
+    flush()
     return pages
 
 

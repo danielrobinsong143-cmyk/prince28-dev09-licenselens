@@ -306,10 +306,12 @@ The first documentation review showed that my Day 06 notes were missing. I check
 
 ## D07 · Parsing my corpus
 
-- Files in the manifest: **818** · parsed: **818** · failed: **0** · pages in Postgres: **1,022**
+- Files in the manifest: **818** · parsed: **818** · failed: **0** · pages in Postgres: **7808**
 - Parsing coverage: **100%** of downloaded files.
-- First run: `parsed=20`, `pages=20`.
-- Full run: `already_parsed=20`, `parsed=798`, `pages=1,022`, `seconds=361.3`.
+- Oversized pages (>3,000 characters): **0**.
+- Final full reparse: `818` files parsed, `7,808` pages generated, `0` failures.
+- Final Neon verification: `818` documents, `7,808` pages, `0` failures.
+- Page-size verification: `0` pages exceed 3,000 characters.
 - Second full run: `already_parsed=818`, `pages=0`, `seconds=1.2`. This verified that rerunning the parser does not create duplicate documents or pages.
 
 ### Failures by reason
