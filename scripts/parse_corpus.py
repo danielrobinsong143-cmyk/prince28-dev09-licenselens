@@ -63,7 +63,7 @@ async def run(args: argparse.Namespace) -> int:
         todo = []
 
         for record in records:
-            if document_id(record["sha256"]) in done:
+            if document_id(record["sha256"]) in done and not args.reparse:
                 counts["already_parsed"] += 1
             elif record["path"] in failed and not args.retry_failed:
                 counts["failed_before"] += 1
@@ -112,6 +112,11 @@ def main() -> int:
     )
     parser.add_argument("--limit", type=int, default=0, help="parse at most N new files")
     parser.add_argument("--retry-failed", action="store_true", help="retry files that failed")
+    parser.add_argument(
+        "--reparse",
+        action="store_true",
+        help="reparse all downloaded files, replacing existing documents and pages",
+    )
     parser.add_argument("--ocr", default="", metavar="LANG", help="OCR scanned PDFs, e.g. eng")
 
     args = parser.parse_args()
