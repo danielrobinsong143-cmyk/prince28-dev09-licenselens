@@ -156,11 +156,11 @@ uid=999(app) gid=999(app) groups=999(app)
 Clean-clone `docker compose ps -a` (API host port 8001 because port 8000 was occupied):
 
 ```text
-NAME                    IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                      PORTS
-licenselens-api-1       licenselens-api          "sh -c 'exec uvicorn…'"   api       25 seconds ago   Up 15 seconds (healthy)     0.0.0.0:8001->8000/tcp
-licenselens-db-1        pgvector/pgvector:pg17   "docker-entrypoint.s…"   db        25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:5433->5432/tcp
+NAME                    IMAGE                    COMMAND                  SERVICE   CREATED          STATUS                       PORTS
+licenselens-api-1       licenselens-api          "sh -c 'exec uvicorn…'"   api       25 seconds ago   Up 15 seconds (healthy)      0.0.0.0:8001->8000/tcp
+licenselens-db-1        pgvector/pgvector:pg17   "docker-entrypoint.s…"   db        25 seconds ago   Up 24 seconds (healthy)      0.0.0.0:5433->5432/tcp
 licenselens-migrate-1   licenselens-migrate      "sh -c 'alembic upgr…'"   migrate   25 seconds ago   Exited (0) 15 seconds ago
-licenselens-redis-1     redis:7-alpine           "docker-entrypoint.s…"   redis     25 seconds ago   Up 24 seconds (healthy)     0.0.0.0:6379->6379/tcp
+licenselens-redis-1     redis:7-alpine           "docker-entrypoint.s…"   redis     25 seconds ago   Up 24 seconds (healthy)      0.0.0.0:6379->6379/tcp
 ```
 
 Migration output, first up from the clean clone:
@@ -183,7 +183,7 @@ The committed clean clone had no `.venv` or `.env`; it built and reached a healt
 Before stopping DB, /health: {"status":"ok","app":"licenselens","env":"local"}
 Before stopping DB, /ready:  {"status":"ready","checks":{"database":true}}
 DB stopped, /health:        {"status":"ok","app":"licenselens","env":"local"}
-DB stopped, /ready:          {"status":"not_ready","checks":{"database":false}}
+DB stopped, /ready:         {"status":"not_ready","checks":{"database":false}}
 DB started, /ready:         {"status":"ready","checks":{"database":true}}
 ```
 
@@ -192,9 +192,9 @@ The load balancer should stop routing requests while readiness is false. Restart
 ### Tests and coverage
 
 ```text
-uv run poe test              ? 16 passed
-uv run poe test-integration  ? 7 passed (ran twice; 7 passed both times)
-coverage TOTAL, unit only    ? 83%
+uv run poe test               ? 16 passed
+uv run poe test-integration   ? 7 passed (ran twice; 7 passed both times)
+coverage TOTAL, unit only     ? 83%
 coverage TOTAL, with integration tests ? 92%
 ```
 
@@ -242,7 +242,6 @@ Coverage still misses `logging_setup.py:16-28` (the logging formatter and except
 
 **What I learned:** The manifest tracks completed downloads. When the downloader runs again, it skips files that are already recorded and available locally.
 
-
 ## D06 · Collecting the corpus
 
 - Start target: SPDX list + ChooseALicense metadata
@@ -285,3 +284,60 @@ Coverage still misses `logging_setup.py:16-28` (the logging formatter and except
 ### One thing that went wrong today, and how I fixed it
 
 The first documentation review showed that my Day 06 notes were missing. I checked the dataset and capacity reports and added a dedicated Day 06 section to record the corpus, licence checks, resume test and capacity estimates.
+
+## D07 · Parser comparison
+
+<!-- parsers:start -->
+
+| File | Parsers (A / B) | Pages | A found | B found | Time (A / B) | Better, why |
+|---|---|---|---|---|---|---|
+| APL-1.0.json | plain (check headings by eye) | 1 | 177,572 chars, 0 headings, 0 tables | - | 0.03 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| LGPL-3.0+.json | plain (check headings by eye) | 1 | 151,076 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| LGPL-3.0-or-later.json | plain (check headings by eye) | 1 | 151,367 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| LGPL-3.0-only.json | plain (check headings by eye) | 1 | 151,305 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| LGPL-3.0.json | plain (check headings by eye) | 1 | 151,072 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| RPL-1.1.json | plain (check headings by eye) | 1 | 127,563 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| GPL-3.0-or-later.json | plain (check headings by eye) | 1 | 125,290 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| GPL-3.0-only.json | plain (check headings by eye) | 1 | 123,868 chars, 0 headings, 0 tables | - | 0.06 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| GPL-3.0+.json | plain (check headings by eye) | 1 | 123,618 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+| CPAL-1.0.json | plain (check headings by eye) | 1 | 120,364 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
+
+<!-- parsers:end -->
+
+## D07 · Parsing my corpus
+
+- Files in the manifest: **818** · parsed: **818** · failed: **0** · pages in Postgres: **1,022**
+- Parsing coverage: **100%** of downloaded files.
+- First run: `parsed=20`, `pages=20`.
+- Full run: `already_parsed=20`, `parsed=798`, `pages=1,022`, `seconds=361.3`.
+- Second full run: `already_parsed=818`, `pages=0`, `seconds=1.2`. This verified that rerunning the parser does not create duplicate documents or pages.
+
+### Failures by reason
+
+The `parse_failures` query returned no rows.
+
+| Reason | Files | What I did |
+|---|---:|---|
+| None | 0 | No parsing failures were recorded; no retry was needed. |
+
+- The one I fixed: **None — 0 failures out of 818 files.**
+
+### What I saw when I read my parsed pages
+
+- I queried the latest five pages in Neon and confirmed that the extracted text was readable and linked to the expected licence document titles.
+- The inspected examples included JSON-style licence records such as `AGPL-1.0`.
+- The inspected records had empty `headings` arrays. These examples are structured licence data rather than documents with section-heading paths.
+- The inspected JSON records showed 0 extracted tables; their content appeared as structured JSON text rather than Markdown table grids.
+- No extraction failure was identified in the five-page sample. I should inspect PDF/HTML pages separately before making claims about their heading paths or tables.
+- PDF/HTML comparison: Not applicable to the current corpus. The manifest contains 0 downloaded PDF/HTML files, so only the plain parser could be evaluated on the selected JSON files.
+
+### My parser choice
+
+- For the ten files selected by the comparison script, the files were all `.json`. The script used the plain parser and reported one page per file, 0 headings and 0 tables.
+- This run did **not** compare PyMuPDF against pypdf or Trafilatura against tag stripping, because none of the selected files were PDFs or HTML.
+- I cannot yet choose a winning PDF or HTML parser from this comparison. A separate comparison using actual PDF/HTML files is still needed if those file types are present.
+- The JSON records were extracted as readable text, but heading and table counts were not applicable to the sampled records.
+
+### One thing that went wrong today, and how I fixed it
+
+The automatic parser-comparison selection picked the ten largest `.json` files, so it did not exercise the PDF or HTML parser comparisons. I recorded that limitation instead of claiming that one PDF or HTML parser was better. I need to choose actual PDF/HTML files for a meaningful A/B comparison.
