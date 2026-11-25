@@ -208,3 +208,39 @@ async def test_gateway_records_failed_primary_and_fallback_stream_attempts():
     assert len(attempts) == 2
     assert [attempt.status for attempt in attempts] == ["error", "error"]
     assert [attempt.provider for attempt in attempts] == ["primary", "fallback"]
+
+
+@pytest.mark.asyncio
+async def test_gateway_skips_primary_when_circuit_is_open():
+    class FailingPrimary:
+        name = "primary"
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def complete(self, messages, temperature=0.2):
+            self.calls += 1
+            raise httpx.ConnectError("Primary unavailable")
+
+        async def stream(self, messages, temperature=0.2):
+            yield "unused"
+
+    primary = FailingPrimary()
+    fallback = FakeLLM()
+    gateway = LLMGateway(primary=primary, fallback=fallback)
+
+    messages = [{"role": "user", "content": "Hello"}]
+
+    # First three requests fail over to the fallback.
+    for _ in range(3):
+        response = await gateway.complete(messages)
+        assert response.fallback_used is True
+
+    assert primary.calls == 3
+
+    # Fourth request must skip the primary.
+    response = await gateway.complete(messages)
+
+    assert response.fallback_used is True
+    assert primary.calls == 3
