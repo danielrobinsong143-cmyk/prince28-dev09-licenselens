@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, replace
 from typing import Protocol
 
@@ -41,6 +41,31 @@ class LLMResponse:
     fallback_used: bool = False
 
 
+@dataclass
+class LLMStreamResult:
+    content: str
+    provider: str
+    model: str
+    tokens_in: int
+    tokens_out: int
+    latency_ms: int
+    fallback_used: bool = False
+
+
+@dataclass
+class LLMProviderAttempt:
+    """Metadata describing one provider attempt."""
+
+    provider: str
+    model: str
+    status: str
+    error: str | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    latency_ms: int = 0
+    fallback_used: bool = False
+
+
 class LLMProvider(Protocol):
     async def complete(
         self,
@@ -52,7 +77,7 @@ class LLMProvider(Protocol):
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.2,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[str | LLMStreamResult]: ...
 
 
 class FakeLLM:
@@ -188,8 +213,13 @@ class OpenAICompatProvider:
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.2,
-    ) -> AsyncIterator[str]:
-        """Stream response chunks using Server-Sent Events."""
+    ) -> AsyncIterator[str | LLMStreamResult]:
+        """Stream text and return usage metadata after completion."""
+
+        start = time.perf_counter()
+        content_parts: list[str] = []
+        tokens_in = 0
+        tokens_out = 0
 
         async with (
             httpx.AsyncClient(timeout=self.timeout) as client,
@@ -202,6 +232,7 @@ class OpenAICompatProvider:
                     "messages": messages,
                     "temperature": temperature,
                     "stream": True,
+                    "stream_options": {"include_usage": True},
                 },
             ) as response,
         ):
@@ -221,10 +252,27 @@ class OpenAICompatProvider:
                 except json.JSONDecodeError:
                     continue
 
-                content = chunk.get("choices", [{}])[0].get("delta", {}).get("content")
+                usage = chunk.get("usage")
+                if usage:
+                    tokens_in = usage.get("prompt_tokens", 0)
+                    tokens_out = usage.get("completion_tokens", 0)
 
-                if content:
-                    yield content
+                choices = chunk.get("choices", [])
+                if choices:
+                    text = choices[0].get("delta", {}).get("content")
+
+                    if text:
+                        content_parts.append(text)
+                        yield text
+
+        yield LLMStreamResult(
+            content="".join(content_parts),
+            provider=self.name,
+            model=self.model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+        )
 
 
 class CircuitOpenError(Exception):
@@ -328,15 +376,71 @@ class LLMGateway:
         self,
         messages: list[dict[str, str]],
         temperature: float = 0.2,
-    ) -> AsyncIterator[str]:
+        on_attempt: Callable[[LLMProviderAttempt], Awaitable[None]] | None = None,
+    ) -> AsyncIterator[str | LLMStreamResult]:
         """Stream from primary, falling back only before the first chunk."""
 
-        # If primary circuit is open, use fallback immediately.
-        if not await self.circuit_breaker.allow_request():
-            logger.warning("Primary circuit is open. Streaming from fallback.")
+        async def report(
+            provider,
+            status: str,
+            *,
+            error: str | None = None,
+            result: LLMStreamResult | None = None,
+            fallback_used: bool = False,
+        ) -> None:
+            if on_attempt is None:
+                return
 
-            async for chunk in self.fallback.stream(messages, temperature):
-                yield chunk
+            try:
+                await on_attempt(
+                    LLMProviderAttempt(
+                        provider=(
+                            result.provider if result else getattr(provider, "name", "unknown")
+                        ),
+                        model=(result.model if result else getattr(provider, "model", "unknown")),
+                        status=status,
+                        error=error,
+                        tokens_in=result.tokens_in if result else 0,
+                        tokens_out=result.tokens_out if result else 0,
+                        latency_ms=result.latency_ms if result else 0,
+                        fallback_used=fallback_used,
+                    )
+                )
+            except Exception:
+                logger.exception("Failed to record LLM provider attempt.")
+
+        async def stream_provider(provider, fallback_used: bool):
+            try:
+                async for item in provider.stream(messages, temperature):
+                    if isinstance(item, LLMStreamResult):
+                        result = replace(
+                            item,
+                            fallback_used=fallback_used,
+                        )
+                        await report(
+                            provider,
+                            "ok",
+                            result=result,
+                            fallback_used=fallback_used,
+                        )
+                        yield result
+                    else:
+                        yield item
+
+            except Exception as exc:
+                await report(
+                    provider,
+                    "error",
+                    error=str(exc),
+                    fallback_used=fallback_used,
+                )
+                raise
+
+        if not await self.circuit_breaker.allow_request():
+            logger.warning("Primary circuit is open. Using fallback.")
+
+            async for item in stream_provider(self.fallback, True):
+                yield item
             return
 
         primary_stream = self.primary.stream(
@@ -344,32 +448,55 @@ class LLMGateway:
             temperature,
         ).__aiter__()
 
-        # Request the first chunk before committing to the primary stream.
         try:
-            first_chunk = await primary_stream.__anext__()
+            first_item = await primary_stream.__anext__()
 
         except StopAsyncIteration:
-            await self.circuit_breaker.record_success()
+            error = "Primary provider returned an empty stream."
+            await self.circuit_breaker.record_failure()
+            await report(self.primary, "error", error=error)
+
+            async for item in stream_provider(self.fallback, True):
+                yield item
             return
 
-        except httpx.HTTPError:
+        except Exception as exc:
             logger.warning(
-                "Primary streaming failed before first chunk. Switching to fallback.",
+                "Primary streaming failed before first chunk.",
                 exc_info=True,
             )
             await self.circuit_breaker.record_failure()
+            await report(
+                self.primary,
+                "error",
+                error=str(exc),
+            )
 
-            async for chunk in self.fallback.stream(messages, temperature):
-                yield chunk
+            async for item in stream_provider(self.fallback, True):
+                yield item
             return
 
-        # First chunk received: primary stream is now committed.
         await self.circuit_breaker.record_success()
-        yield first_chunk
 
-        # Never switch providers after output has started.
-        async for chunk in primary_stream:
-            yield chunk
+        yield first_item
+
+        try:
+            async for item in primary_stream:
+                if isinstance(item, LLMStreamResult):
+                    await report(
+                        self.primary,
+                        "ok",
+                        result=item,
+                    )
+                yield item
+
+        except Exception as exc:
+            await report(
+                self.primary,
+                "error",
+                error=str(exc),
+            )
+            raise
 
 
 def create_gateway(settings) -> LLMGateway:
