@@ -302,6 +302,8 @@ The first documentation review showed that my Day 06 notes were missing. I check
 | GPL-3.0+.json | plain (check headings by eye) | 1 | 123,618 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
 | CPAL-1.0.json | plain (check headings by eye) | 1 | 120,364 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
 
+**Comparison conclusion:** All 10 selected files are JSON. The plain parser was used because the corpus contains no PDF or HTML files requiring alternative parsers. The extracted content and heading structure were inspected manually. A two-parser comparison was not applicable to these files.
+
 <!-- parsers:end -->
 
 ## D07 · Parsing my corpus
@@ -313,6 +315,8 @@ The first documentation review showed that my Day 06 notes were missing. I check
 - Final Neon verification: `818` documents, `7,808` pages, `0` failures.
 - Page-size verification: `0` pages exceed 3,000 characters.
 - Second full run: `already_parsed=818`, `pages=0`, `seconds=1.2`. This verified that rerunning the parser does not create duplicate documents or pages.
+- Failures by reason: **0** — no files failed during parsing.
+- Issue fixed: Long paragraphs could exceed the 3,000-character page limit. Updated `split_pages()` to split long paragraphs into smaller pages. Verified that **0** pages exceed the limit.
 
 ### Failures by reason
 
@@ -326,19 +330,21 @@ The `parse_failures` query returned no rows.
 
 ### What I saw when I read my parsed pages
 
-- I queried the latest five pages in Neon and confirmed that the extracted text was readable and linked to the expected licence document titles.
-- The inspected examples included JSON-style licence records such as `AGPL-1.0`.
-- The inspected records had empty `headings` arrays. These examples are structured licence data rather than documents with section-heading paths.
-- The inspected JSON records showed 0 extracted tables; their content appeared as structured JSON text rather than Markdown table grids.
-- No extraction failure was identified in the five-page sample. I should inspect PDF/HTML pages separately before making claims about their heading paths or tables.
-- PDF/HTML comparison: Not applicable to the current corpus. The manifest contains 0 downloaded PDF/HTML files, so only the plain parser could be evaluated on the selected JSON files.
+- Inspected AGPL-3.0 pages in Neon: extracted licence text was readable, page numbers were present, and headings were empty for the structured JSON content.
+- Mozilla Public License 2.0, page 2: heading path correctly detected as ["Mozilla Public License Version 2.0", "1. Definitions"].
+- ODC Open Database License, page 2: heading path correctly detected as ["ODC Open Database License (ODbL)", "Preamble", "1.0 Definitions of Capitalised Words"].
+- Mozilla Public License, page 1: YAML front matter was preserved, with an empty heading path.
+- ODC Open Database License: 0 tables detected; the inspected content contained prose and YAML metadata rather than Markdown tables.
+- No extraction failure was identified in the inspected examples.
+- PDF/HTML comparison was not applicable because the corpus contains no PDF or HTML files.
 
 ### My parser choice
 
-- For the ten files selected by the comparison script, the files were all `.json`. The script used the plain parser and reported one page per file, 0 headings and 0 tables.
-- This run did **not** compare PyMuPDF against pypdf or Trafilatura against tag stripping, because none of the selected files were PDFs or HTML.
-- I cannot yet choose a winning PDF or HTML parser from this comparison. A separate comparison using actual PDF/HTML files is still needed if those file types are present.
-- The JSON records were extracted as readable text, but heading and table counts were not applicable to the sampled records.
+- The plain parser was appropriate for the selected JSON files because the corpus contains no PDF or HTML files.
+- All 10 selected files were JSON. Each produced one page, with 0 headings and 0 tables.
+- I did not compare PyMuPDF against pypdf or trafilatura against tag stripping because those file types are absent from the corpus.
+- Manual inspection of MPL-2.0 and ODbL confirmed readable licence text and correctly detected heading paths on later pages.
+- A limitation is that the current corpus has no PDF or HTML examples, so alternative document parsers could not be evaluated.
 
 ### One thing that went wrong today, and how I fixed it
 
