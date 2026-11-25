@@ -172,3 +172,39 @@ def test_calculate_cost_inr_with_zero_tokens():
     )
 
     assert cost == 0.0
+
+
+@pytest.mark.asyncio
+async def test_gateway_records_failed_primary_and_fallback_stream_attempts():
+    class FailingStreamLLM:
+        def __init__(self, name):
+            self.name = name
+            self.model = "test-model"
+
+        async def complete(self, messages, temperature=0.2):
+            raise httpx.ConnectError(f"{self.name} unavailable")
+
+        async def stream(self, messages, temperature=0.2):
+            raise httpx.ConnectError(f"{self.name} unavailable")
+            yield  # Makes this an async generator.
+
+    attempts = []
+
+    async def record_attempt(attempt):
+        attempts.append(attempt)
+
+    gateway = LLMGateway(
+        primary=FailingStreamLLM("primary"),
+        fallback=FailingStreamLLM("fallback"),
+    )
+
+    with pytest.raises(httpx.ConnectError):
+        async for _ in gateway.stream(
+            [{"role": "user", "content": "Hello"}],
+            on_attempt=record_attempt,
+        ):
+            pass
+
+    assert len(attempts) == 2
+    assert [attempt.status for attempt in attempts] == ["error", "error"]
+    assert [attempt.provider for attempt in attempts] == ["primary", "fallback"]

@@ -7,6 +7,7 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10_000)
     temperature: float = Field(default=0.2, ge=0.0, le=2.0)
     purpose: str = Field(default="general", max_length=50)
+    stream: bool = True
 
 
 class ChatResponse(BaseModel):
