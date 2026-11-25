@@ -7,7 +7,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -355,6 +355,7 @@ async def chat_stream(
 @router.get("/usage")
 async def get_usage(
     session: Annotated[AsyncSession, Depends(get_session)],
+    days: Annotated[int, Query(ge=1, le=90)] = 7,
 ) -> dict:
     repository = LlmCallRepository(session)
-    return await repository.get_usage()
+    return await repository.get_usage(days=days)

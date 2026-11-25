@@ -76,7 +76,7 @@ class FakeLlmCallRepository:
     async def record(self, **kwargs):
         self.records.append(kwargs)
 
-    async def get_usage(self):
+    async def get_usage(self, days: int = 7):
         return {
             "total_calls": 1,
             "total_tokens_in": 20,
