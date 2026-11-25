@@ -422,3 +422,14 @@ Observation: The Tamil message used approximately 2.75 times as many input token
 - Input tokens: 2284
 - Output tokens: 4310
 - Estimated cost: Rs 0.226422
+
+### Circuit breaker verification
+
+- Failure threshold: 3 consecutive primary-provider failures.
+- Recovery timeout: 30 seconds.
+- First three requests: primary failed and fallback was used.
+- Fourth request: primary was skipped because the circuit was open.
+- Verified through a gateway integration test using fake providers.
+- Confirmed the log message: `Primary circuit is open. Using fallback.`
+- Test result: 14 gateway tests passed.
+- Full test suite: passed; 10 integration tests skipped because the test database was not configured.
