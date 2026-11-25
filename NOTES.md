@@ -413,15 +413,42 @@ Observation: The Tamil message used approximately 2.75 times as many input token
 
 ### Fallback and circuit breaker
 
-- Four test requests succeeded through Groq fallback.
-- Circuit breaker opening: not yet verified in server logs.
+- Primary: Gemini (`gemini-3.8-flash`).
+- Fallback: Groq (`openai/gpt-oss-20b`).
+- Primary-provider failures trigger fallback to Groq.
+- Circuit breaker threshold: 3 consecutive primary-provider failures.
+- Recovery timeout: 30 seconds.
+- Verified circuit opening through a gateway integration test using fake providers.
+- The fourth request skipped the primary provider while the circuit was open.
 
-### The bill
+### Production usage verification
 
-- Calls: 11
-- Input tokens: 2284
-- Output tokens: 4310
-- Estimated cost: Rs 0.226422
+Verified endpoint:
+
+`GET /v1/usage?days=7`
+
+Production response snapshot: 25 November 2026.
+
+| Metric | Result |
+|---|---:|
+| Provider attempts | 17 |
+| Errors | 2 |
+| Fallback attempts | 15 |
+| Input tokens | 3,459 |
+| Output tokens | 5,715 |
+| Estimated cost | ₹0.285585 |
+
+Daily breakdown:
+
+| Date | Attempts | Errors | Fallbacks |
+|---|---:|---:|---:|
+| 2026-11-25 | 17 | 2 | 15 |
+
+- The endpoint preserves lifetime totals.
+- It also reports totals for the requested date range.
+- Daily usage is grouped by calendar date.
+- The `days` query parameter accepts values from 1 to 90, defaulting to 7.
+- Costs are estimates based on configured model pricing, not a verified provider invoice.
 
 ### Circuit breaker verification
 
@@ -430,6 +457,13 @@ Observation: The Tamil message used approximately 2.75 times as many input token
 - First three requests: primary failed and fallback was used.
 - Fourth request: primary was skipped because the circuit was open.
 - Verified through a gateway integration test using fake providers.
-- Confirmed the log message: `Primary circuit is open. Using fallback.`
 - Test result: 14 gateway tests passed.
-- Full test suite: passed; 10 integration tests skipped because the test database was not configured.
+
+### Day 8 testing
+
+- Unit tests: 73 passed.
+- PostgreSQL integration tests: 11 passed.
+- Ruff lint: passed.
+- Ruff formatting: passed.
+- CI build image: passed.
+- CI lint and test: passed.
