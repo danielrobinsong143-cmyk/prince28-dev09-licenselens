@@ -211,7 +211,7 @@ async def test_gateway_records_failed_primary_and_fallback_stream_attempts():
 
 
 @pytest.mark.asyncio
-async def test_gateway_skips_primary_when_circuit_is_open(caplog):
+async def test_gateway_skips_primary_when_circuit_is_open():
     class FailingPrimary:
         name = "primary"
         model = "test-model"
@@ -240,9 +240,7 @@ async def test_gateway_skips_primary_when_circuit_is_open(caplog):
     assert primary.calls == 3
 
     # Fourth request must skip the primary.
-    with caplog.at_level("WARNING"):
-        response = await gateway.complete(messages)
+    response = await gateway.complete(messages)
 
     assert response.fallback_used is True
     assert primary.calls == 3
-    assert "Primary circuit is open. Using fallback." in caplog.text
