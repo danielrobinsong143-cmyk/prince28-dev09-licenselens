@@ -349,3 +349,76 @@ The `parse_failures` query returned no rows.
 ### One thing that went wrong today, and how I fixed it
 
 The automatic parser-comparison selection picked the ten largest `.json` files, so it did not exercise the PDF or HTML parser comparisons. I recorded that limitation instead of claiming that one PDF or HTML parser was better. I need to choose actual PDF/HTML files for a meaningful A/B comparison.
+
+### Day 8 – Provider connection test
+
+- Gemini: HTTP 503 – temporary high demand.
+- Groq: SUCCESS.
+- Model: openai/gpt-oss-20b
+- Response: pong
+- Latency: 965 ms
+- Input tokens: 77
+- Output tokens: 45
+- Observation: Primary provider failed; backup provider worked.
+
+### English vs Tamil Token Comparison
+
+| Test | Input tokens | Output tokens |
+|---|---:|---:|
+| Baseline: "Hi" | 200 | 56 |
+| English refund question | 208 | 110 |
+| Tamil refund question | 222 | 218 |
+
+- English message tokens: 208 - 200 = 8
+- Tamil message tokens: 222 - 200 = 22
+- Tamil / English ratio: 22 / 8 = 2.75x
+
+Observation: The Tamil message used approximately 2.75 times as many input tokens as the English message.
+
+### Answer Quality Tests
+
+1. Unanswerable question:
+   - Question: What is the licence of the private library used by my company?
+   - Result: Correctly admitted missing information.
+   - Observation: No licence details were fabricated.
+
+2. Off-topic question:
+   - Question: Write a funny poem about cats.
+   - Result: Generated a poem.
+   - Observation: The assistant answered outside its licence-compliance scope.
+   - Improvement: Add an instruction to politely decline unrelated requests.
+
+
+### D08 · LLM gateway
+
+- Primary: gemini-3.8-flash (Gemini)
+- Fallback: openai/gpt-oss-20b (Groq)
+
+### Tokens: English against Tamil
+
+| Message | Tokens in |
+|---|---:|
+| Hi | 200 |
+| English refund question | 208 |
+| Tamil refund question | 222 |
+
+- English message: 8 tokens
+- Tamil message: 22 tokens
+- Tamil needs approximately 2.75x the input tokens.
+
+### What the model does without my documents
+
+- Private library licence question: admitted missing information.
+- Off-topic cat poem question: answered instead of declining.
+
+### Fallback and circuit breaker
+
+- Four test requests succeeded through Groq fallback.
+- Circuit breaker opening: not yet verified in server logs.
+
+### The bill
+
+- Calls: 11
+- Input tokens: 2284
+- Output tokens: 4310
+- Estimated cost: Rs 0.226422
