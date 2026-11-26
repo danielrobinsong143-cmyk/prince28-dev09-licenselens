@@ -482,3 +482,25 @@ Daily breakdown:
 - Ruff formatting: passed.
 - CI build image: passed.
 - CI lint and test: passed.
+
+
+### SPDX JSON vs ChooseALicense text — 10-file comparison
+
+| Licence | SPDX pages | ChooseALicense pages | SPDX headings | Choose headings | Similarity | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| 0BSD | 1 | 1 | 0 | 0 | 3.38% | Placeholder formatting differs; low similarity requires manual review |
+| AFL-3.0 | 4 | 4 | 0 | 0 | 99.65% | Near-identical text |
+| AGPL-3.0 | 13 | 13 | 18 | 18 | 100.00% | Text and headings match |
+| Apache-2.0 | 4 | 5 | 9 | 9 | 100.00% | Text and headings match; page counts differ |
+| Artistic-2.0 | 3 | 3 | 0 | 0 | 99.99% | Near-identical text |
+| BlueOak-1.0.0 | 1 | 1 | 9 | 9 | 100.00% | Text and headings match |
+| BSD-2-Clause-Patent | 1 | 1 | 0 | 0 | 99.16% | Near-identical text |
+| BSD-2-Clause | 1 | 1 | 0 | 0 | 97.92% | Near-identical text |
+| BSD-3-Clause-Clear | 1 | 1 | 0 | 0 | 2.73% | Placeholder formatting differs; low similarity requires manual review |
+| BSD-3-Clause | 1 | 1 | 0 | 0 | 98.16% | Near-identical text |
+
+**Method:** Extracted `licenseText` from SPDX JSON and the licence body from ChooseALicense TXT files after removing YAML front matter. Both texts were passed through the same `parse_file()` pipeline. Compared normalized text similarity, page counts, and extracted headings.
+
+**Observation:** Apache-2.0, AGPL-3.0, and BlueOak-1.0.0 had matching heading counts and titles. BSD numbered conditions were correctly excluded from heading detection. Apache-2.0 had different page counts despite identical normalized text.
+
+**Limitations:** Similarity scores for 0BSD and BSD-3-Clause-Clear are affected by placeholder or template formatting differences. Similarity scores alone do not establish legal equivalence.

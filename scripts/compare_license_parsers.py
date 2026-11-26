@@ -1,8 +1,9 @@
 import json
 import re
+from difflib import SequenceMatcher
 from pathlib import Path
 
-from licenselens.ingest.parse import parse_file
+from licenselens.ingest.parse import headings_in, parse_file
 
 ROOT = Path(__file__).resolve().parents[1]
 SPDX = ROOT / "data/raw/spdx-licences/json/details"
@@ -40,19 +41,12 @@ def normalize(text):
 
 
 def main():
-    print(
-        "| Licence | SPDX pages | ChooseALicense pages | "
-        "SPDX headings | Choose headings | SPDX chars | "
-        "Choose chars | Similarity | Verdict |"
-    )
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---|")
-
     for licence in LICENSES:
         json_path = SPDX / f"{licence}.json"
         txt_path = CHOOSE / f"{licence}.txt"
 
         if not json_path.exists() or not txt_path.exists():
-            print(f"| {licence} | Missing source | | | | | | | Check files |")
+            print(f"\n{licence}: Missing source")
             continue
 
         spdx_text = extract_spdx(json_path)
@@ -66,33 +60,42 @@ def main():
             choose_temp.write_text(choose_text, encoding="utf-8")
 
             spdx_doc = parse_file(spdx_temp)
-
             choose_doc = parse_file(choose_temp)
 
             a = normalize("\n".join(p.text for p in spdx_doc.pages))
             b = normalize("\n".join(p.text for p in choose_doc.pages))
 
-            from difflib import SequenceMatcher
+            spdx_found, _ = headings_in("\n".join(p.text for p in spdx_doc.pages))
+            choose_found, _ = headings_in("\n".join(p.text for p in choose_doc.pages))
+
+            spdx_headings = [title for _, title in spdx_found]
+            choose_headings = [title for _, title in choose_found]
 
             similarity = SequenceMatcher(None, a, b).ratio() * 100
 
-            verdict = (
-                "Equivalent legal terms; placeholder formatting differs"
-                if licence in {"0BSD", "BSD-3-Clause-Clear"}
-                else (
-                    "Equivalent content; heading extraction needs review"
-                    if similarity >= 95
-                    else "Content differs; inspect manually"
-                )
-            )
+            print(f"\n{'=' * 65}")
+            print(f"LICENCE: {licence}")
+            print(f"Similarity: {similarity:.2f}%")
+            print(f"SPDX pages: {len(spdx_doc.pages)}")
+            print(f"ChooseALicense pages: {len(choose_doc.pages)}")
 
-            print(
-                f"| {licence} | {len(spdx_doc.pages)} | "
-                f"{len(choose_doc.pages)} | "
-                f"{sum(bool(p.headings) for p in spdx_doc.pages)} | "
-                f"{sum(bool(p.headings) for p in choose_doc.pages)} | "
-                f"{len(a)} | {len(b)} | {similarity:.2f}% | {verdict} |"
-            )
+            print(f"\nSPDX headings ({len(spdx_headings)}):")
+            for level, title in spdx_found:
+                print(f"  Level {level}: {title}")
+
+            print(f"\nChooseALicense headings ({len(choose_headings)}):")
+            for level, title in choose_found:
+                print(f"  Level {level}: {title}")
+
+            print("\nSPDX heading paths:")
+            for page in spdx_doc.pages:
+                if page.headings:
+                    print(f"  Page {page.page_no}: {page.headings}")
+
+            print("\nChooseALicense heading paths:")
+            for page in choose_doc.pages:
+                if page.headings:
+                    print(f"  Page {page.page_no}: {page.headings}")
 
         finally:
             spdx_temp.unlink(missing_ok=True)
