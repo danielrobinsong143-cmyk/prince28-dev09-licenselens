@@ -288,23 +288,21 @@ The first documentation review showed that my Day 06 notes were missing. I check
 ## D07 · Parser comparison
 
 <!-- parsers:start -->
-
 | File | Parsers (A / B) | Pages | A found | B found | Time (A / B) | Better, why |
-|---|---|---|---|---|---|---|
-| APL-1.0.json | plain (check headings by eye) | 1 | 177,572 chars, 0 headings, 0 tables | - | 0.03 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| LGPL-3.0+.json | plain (check headings by eye) | 1 | 151,076 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| LGPL-3.0-or-later.json | plain (check headings by eye) | 1 | 151,367 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| LGPL-3.0-only.json | plain (check headings by eye) | 1 | 151,305 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| LGPL-3.0.json | plain (check headings by eye) | 1 | 151,072 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| RPL-1.1.json | plain (check headings by eye) | 1 | 127,563 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| GPL-3.0-or-later.json | plain (check headings by eye) | 1 | 125,290 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| GPL-3.0-only.json | plain (check headings by eye) | 1 | 123,868 chars, 0 headings, 0 tables | - | 0.06 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| GPL-3.0+.json | plain (check headings by eye) | 1 | 123,618 chars, 0 headings, 0 tables | - | 0.04 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-| CPAL-1.0.json | plain (check headings by eye) | 1 | 120,364 chars, 0 headings, 0 tables | - | 0.05 s | One plain parser was used; this JSON file was not part of a two-parser comparison. |
-
-**Comparison conclusion:** All 10 selected files are JSON. The plain parser was used because the corpus contains no PDF or HTML files requiring alternative parsers. The extracted content and heading structure were inspected manually. A two-parser comparison was not applicable to these files.
-
+|---|---|---:|---|---|---|---|
+| APL-1.0.json | plain (check headings by eye) | 65 | 177,572 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| LGPL-3.0+.json | plain (check headings by eye) | 56 | 151,076 chars, 0 headings, 0 tables | - | 0.06 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| LGPL-3.0-or-later.json | plain (check headings by eye) | 55 | 151,367 chars, 0 headings, 0 tables | - | 0.08 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| LGPL-3.0-only.json | plain (check headings by eye) | 55 | 151,305 chars, 0 headings, 0 tables | - | 0.07 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| LGPL-3.0.json | plain (check headings by eye) | 55 | 151,072 chars, 0 headings, 0 tables | - | 0.04 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| RPL-1.1.json | plain (check headings by eye) | 46 | 127,563 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| GPL-3.0-or-later.json | plain (check headings by eye) | 45 | 125,290 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| GPL-3.0-only.json | plain (check headings by eye) | 44 | 123,868 chars, 0 headings, 0 tables | - | 0.04 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| GPL-3.0+.json | plain (check headings by eye) | 44 | 123,618 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
+| CPAL-1.0.json | plain (check headings by eye) | 44 | 120,364 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
 <!-- parsers:end -->
+
+**Comparison note:** All ten selected files are JSON files. The comparison script used the plain parser because these files do not require PDF- or HTML-specific parsing. A second parser was not applicable to this comparison.
 
 ## D07 · Parsing my corpus
 
