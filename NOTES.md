@@ -285,24 +285,41 @@ Coverage still misses `logging_setup.py:16-28` (the logging formatter and except
 
 The first documentation review showed that my Day 06 notes were missing. I checked the dataset and capacity reports and added a dedicated Day 06 section to record the corpus, licence checks, resume test and capacity estimates.
 
-## D07 · Parser comparison
 
-<!-- parsers:start -->
-| File | Parsers (A / B) | Pages | A found | B found | Time (A / B) | Better, why |
-|---|---|---:|---|---|---|---|
-| APL-1.0.json | plain (check headings by eye) | 65 | 177,572 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| LGPL-3.0+.json | plain (check headings by eye) | 56 | 151,076 chars, 0 headings, 0 tables | - | 0.06 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| LGPL-3.0-or-later.json | plain (check headings by eye) | 55 | 151,367 chars, 0 headings, 0 tables | - | 0.08 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| LGPL-3.0-only.json | plain (check headings by eye) | 55 | 151,305 chars, 0 headings, 0 tables | - | 0.07 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| LGPL-3.0.json | plain (check headings by eye) | 55 | 151,072 chars, 0 headings, 0 tables | - | 0.04 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| RPL-1.1.json | plain (check headings by eye) | 46 | 127,563 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| GPL-3.0-or-later.json | plain (check headings by eye) | 45 | 125,290 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| GPL-3.0-only.json | plain (check headings by eye) | 44 | 123,868 chars, 0 headings, 0 tables | - | 0.04 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| GPL-3.0+.json | plain (check headings by eye) | 44 | 123,618 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-| CPAL-1.0.json | plain (check headings by eye) | 44 | 120,364 chars, 0 headings, 0 tables | - | 0.05 s / - | Plain parser is appropriate for JSON files; no second parser is applicable. |
-<!-- parsers:end -->
+### D07 · Parser comparison
 
-**Comparison note:** All ten selected files are JSON files. The comparison script used the plain parser because these files do not require PDF- or HTML-specific parsing. A second parser was not applicable to this comparison.
+Compared two readings of 10 matching licence texts from the corpus:
+
+- **Source A:** SPDX licence JSON (`licenseText` field).
+- **Source B:** ChooseALicense licence TXT (YAML front matter removed).
+- Both texts were processed using the LicenseLens parser.
+- Similarity was calculated after normalizing whitespace and converting text to lowercase.
+
+| Licence | SPDX pages | ChooseALicense pages | SPDX headings | Choose headings | Similarity | Verdict |
+|---|---:|---:|---:|---:|---:|---|
+| 0BSD | 1 | 1 | 0 | 0 | 3.38% | Equivalent legal terms; placeholder formatting differs |
+| AFL-3.0 | 4 | 4 | 0 | 0 | 99.65% | Equivalent content; heading extraction needs review |
+| AGPL-3.0 | 13 | 13 | 0 | 0 | 100.00% | Equivalent content; heading extraction needs review |
+| Apache-2.0 | 4 | 5 | 0 | 0 | 100.00% | Equivalent content; heading extraction needs review |
+| Artistic-2.0 | 3 | 3 | 0 | 0 | 99.99% | Equivalent content; heading extraction needs review |
+| BlueOak-1.0.0 | 1 | 1 | 0 | 0 | 100.00% | Equivalent content; heading extraction needs review |
+| BSD-2-Clause-Patent | 1 | 1 | 0 | 0 | 99.16% | Equivalent content; heading extraction needs review |
+| BSD-2-Clause | 1 | 1 | 0 | 0 | 97.92% | Equivalent content; heading extraction needs review |
+| BSD-3-Clause-Clear | 1 | 1 | 0 | 0 | 2.73% | Equivalent legal terms; placeholder formatting differs |
+| BSD-3-Clause | 1 | 1 | 0 | 0 | 98.16% | Equivalent content; heading extraction needs review |
+
+**Observations**
+
+- Eight licence pairs showed at least 97.92% text similarity.
+- 0BSD uses different copyright placeholders in the two sources.
+- BSD-3-Clause-Clear also uses different copyright placeholders. Manual inspection confirmed that the main legal terms are substantially equivalent.
+- Apache-2.0 produced different page counts (4 and 5), despite 100% normalized text similarity. This is a pagination difference worth reviewing.
+- Both sources produced zero extracted headings across these 10 files. The current heading detector does not recognize the legal section-heading formats in these samples.
+- Heading extraction therefore needs improvement and manual verification before treating heading paths as complete.
+- Similarity measures text resemblance, not legal equivalence.
+
+**Conclusion:** The comparison demonstrates that the two sources contain highly similar licence text in eight cases, with two placeholder-format differences. The current parser preserves the text but needs better heading recognition for these legal documents.
+
 
 ## D07 · Parsing my corpus
 
