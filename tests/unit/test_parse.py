@@ -213,3 +213,35 @@ def test_split_pages_splits_long_paragraph():
     assert len(pages) == 3
     assert all(len(page) <= 3000 for page in pages)
     assert "".join(pages) == text
+
+
+def test_numbered_legal_headings_are_detected():
+    text = (
+        "1. Definitions\n\n"
+        "A definition section.\n\n"
+        "1.1. Contributor\n\n"
+        "Contributor means an individual.\n\n"
+        "2. Grant of Copyright\n\n"
+        "Copyright permission is granted."
+    )
+
+    found, _ = parse.headings_in(text)
+
+    assert found == [
+        (1, "1. Definitions"),
+        (2, "1.1. Contributor"),
+        (1, "2. Grant of Copyright"),
+    ]
+
+
+def test_numbered_list_items_are_not_detected_as_headings():
+    text = (
+        "1. Redistributions of source code must retain the above "
+        "copyright notice.\n"
+        "2. Redistributions in binary form must reproduce the above "
+        "copyright notice."
+    )
+
+    found, _ = parse.headings_in(text)
+
+    assert found == []

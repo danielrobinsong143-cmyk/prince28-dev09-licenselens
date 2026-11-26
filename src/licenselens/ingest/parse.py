@@ -82,6 +82,7 @@ def drop_repeated_lines(pages: list[str]) -> list[str]:
 
 
 HEADING = re.compile(r"^(#{1,6}) +(.+?)\s*$")
+NUMBERED_HEADING = re.compile(r"^\s*(\d+(?:\.\d+)*\.?)\s+([A-Z][^.!?]{1,90}?)(?:\.|$)")
 
 
 def heading_title(raw: str) -> str:
@@ -92,13 +93,42 @@ FENCE = re.compile(r"^\s*(```|~~~)")
 
 
 def headings_in(text: str, in_code: bool = False) -> tuple[list[tuple[int, str]], bool]:
-    """Find headings, but ignore heading-like lines inside code blocks."""
+    """Find Markdown and numbered legal headings, ignoring code blocks."""
     found = []
+
+    excluded_words = (
+        r"\b(must|shall|should|may|can|will|means|retain|reproduce|neither|"
+        r"modifies|requires|allows|prohibits|applies|includes)\b"
+    )
+
     for line in text.splitlines():
         if FENCE.match(line):
             in_code = not in_code
-        elif not in_code and (match := HEADING.match(line)):
-            found.append((len(match.group(1)), heading_title(match.group(2))))
+            continue
+
+        if in_code:
+            continue
+
+        markdown_match = HEADING.match(line)
+        if markdown_match:
+            found.append(
+                (
+                    len(markdown_match.group(1)),
+                    heading_title(markdown_match.group(2)),
+                )
+            )
+            continue
+
+        legal_match = NUMBERED_HEADING.match(line)
+
+        if legal_match:
+            title = legal_match.group(2).strip()
+
+            if not re.search(excluded_words, title, re.IGNORECASE):
+                number = legal_match.group(1).rstrip(".")
+                level = number.count(".") + 1
+                found.append((level, f"{number}. {title}"))
+
     return found, in_code
 
 
