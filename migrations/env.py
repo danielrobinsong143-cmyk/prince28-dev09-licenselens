@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Import our application settings and SQLAlchemy models.
 from licenselens.config import get_settings  # noqa: E402

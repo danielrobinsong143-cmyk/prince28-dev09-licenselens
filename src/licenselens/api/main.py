@@ -11,6 +11,7 @@ from licenselens.api.routes import chat, documents, health
 from licenselens.config import Settings, get_settings
 from licenselens.db.session import make_engine, make_sessionmaker
 from licenselens.llm.gateway import create_gateway
+from licenselens.llm.recorder import LLMCallRecorder
 from licenselens.logging_setup import setup_logging
 
 logger = logging.getLogger("licenselens")
@@ -37,6 +38,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)
+    app.state.llm_recorder = LLMCallRecorder(
+        app.state.sessionmaker,
+        settings,
+    )
     app.state.llm_gateway = create_gateway(settings)
 
     app.middleware("http")(request_context)
