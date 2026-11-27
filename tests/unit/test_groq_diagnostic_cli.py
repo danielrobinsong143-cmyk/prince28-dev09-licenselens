@@ -93,15 +93,17 @@ def test_measure_only_cli_reports_all_chunks_without_http(monkeypatch, capsys):
     assert output["classification"] == "measure_only_success"
     assert output["http_request_started"] is False
     assert output["http_request_count"] == 0
-    assert output["extraction_chunk_count"] == 2
+    assert output["extraction_chunk_count"] == 3
     measurements = output["chunk_measurements"]
-    assert [item["chunk_index"] for item in measurements] == [1, 2]
+    assert [item["chunk_index"] for item in measurements] == [1, 2, 3]
     assert [item["chunk_characters"] for item in measurements] == [
-        8000,
+        4000,
+        4000,
         len(document_text) - 8000,
     ]
     assert all(item["request_body_bytes"] > 0 for item in measurements)
-    assert measurements[0]["request_body_bytes"] > measurements[1]["request_body_bytes"]
+    assert measurements[0]["request_body_bytes"] == measurements[1]["request_body_bytes"]
+    assert measurements[0]["request_body_bytes"] > measurements[2]["request_body_bytes"]
     serialized = json.dumps(output)
     assert "PRIVATE_DOCUMENT_TEXT" not in serialized
     assert "PRIVATE_PROMPT_TEXT" not in serialized

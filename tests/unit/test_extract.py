@@ -6,6 +6,9 @@ from pydantic import ValidationError
 
 from licenselens.llm.doc_meta import DocMeta
 from licenselens.llm.extract import (
+    DEFAULT_EXTRACTION_CHUNK_CHARS,
+    DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS,
+    DEFAULT_EXTRACTION_RPM,
     EXTRACTION_MAX_OUTPUT_TOKENS,
     LLMOutputTruncatedError,
     build_extraction_chunks,
@@ -16,7 +19,7 @@ from licenselens.llm.extract import (
     split_document_text,
     validate_metadata,
 )
-from licenselens.llm.gateway import FakeLLM, LLMGateway
+from licenselens.llm.gateway import FakeLLM, LLMGateway, LLMResponse, RequestPacer
 
 VALID_METADATA = {
     "doc_kind": "license",
@@ -34,8 +37,11 @@ VALID_METADATA = {
 }
 
 
-def test_extraction_output_budget_is_raised_to_two_thousand_tokens():
-    assert EXTRACTION_MAX_OUTPUT_TOKENS == 2000
+def test_extraction_default_configuration_constants():
+    assert EXTRACTION_MAX_OUTPUT_TOKENS == 1000
+    assert DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS == 1000
+    assert DEFAULT_EXTRACTION_CHUNK_CHARS == 4000
+    assert DEFAULT_EXTRACTION_RPM == 1.0
 
 
 def make_gateway(responses):
@@ -452,7 +458,7 @@ async def test_extract_metadata_from_multiple_chunks():
         gateway,
         "Extract document metadata.",
         "extract_v1",
-        "A" * 10000,
+        "A" * 7000,
     )
 
     assert gateway.primary.call_count == 2
@@ -482,7 +488,7 @@ async def test_truncated_chunk_retries_then_merges_with_following_chunk():
         gateway,
         "Extract document metadata.",
         "extract_v1",
-        "A" * 10000,
+        "A" * 7000,
     )
 
     assert gateway.primary.call_count == 3
@@ -504,3 +510,60 @@ async def test_extract_metadata_from_chunks_rejects_empty_text():
         )
 
     assert gateway.primary.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_extract_metadata_repair_attempt_respects_request_pacer():
+    delays = []
+
+    async def fake_sleep(duration: float):
+        delays.append(duration)
+
+    clock_time = [100.0]
+
+    def fake_clock():
+        return clock_time[0]
+
+    pacer = RequestPacer(requests_per_minute=1.0, clock=fake_clock, sleep=fake_sleep)
+
+    class PacedProvider:
+        def __init__(self, responses):
+            self.responses = list(responses)
+            self.call_count = 0
+            self.request_pacer = pacer
+
+        async def complete(self, messages, temperature=0.2, response_format=None):
+            await self.request_pacer.wait_for_slot()
+            self.call_count += 1
+            content = self.responses.pop(0)
+            return LLMResponse(
+                content=content,
+                provider="paced",
+                model="paced-model",
+                tokens_in=10,
+                tokens_out=8,
+                latency_ms=1,
+                finish_reason="stop",
+            )
+
+    gateway = LLMGateway(
+        primary=PacedProvider(
+            [
+                '{"doc_kind": "license", "invalid_json',
+                json.dumps(VALID_METADATA),
+            ]
+        ),
+        fallback=None,
+    )
+
+    metadata, _ = await extract_metadata(
+        gateway,
+        "Extract document metadata.",
+        "extract_v1",
+        "MIT License text",
+    )
+
+    assert metadata.spdx_id == "MIT"
+    assert gateway.primary.call_count == 2
+    assert len(delays) == 1
+    assert delays[0] == pytest.approx(60.0)

@@ -19,14 +19,96 @@ from scripts import extract_metadata as extract_runner
 from scripts.extract_metadata import parse_args, process_document
 
 
-def test_extraction_cli_defaults_to_fifty_successes_and_two_requests_per_minute():
+def test_extraction_cli_defaults():
     args = parse_args([])
 
     assert args.limit == 50
-    assert args.rpm == 2
+    assert args.rpm == 1.0
+    assert args.chunk_chars == 4000
+    assert args.max_output_tokens == 1000
     assert args.max_attempts is None
     assert args.document_id is None
     assert args.groq_only is False
+
+
+def test_extraction_cli_accepts_custom_chunk_chars_and_tokens():
+    args = parse_args(
+        [
+            "--chunk-chars",
+            "3000",
+            "--max-output-tokens",
+            "800",
+            "--rpm",
+            "1.5",
+        ]
+    )
+
+    assert args.chunk_chars == 3000
+    assert args.max_output_tokens == 800
+    assert args.rpm == 1.5
+
+
+def test_extraction_cli_rejects_non_positive_chunk_chars_or_output_tokens():
+    with pytest.raises(SystemExit):
+        parse_args(["--chunk-chars", "0"])
+
+    with pytest.raises(SystemExit):
+        parse_args(["--max-output-tokens", "0"])
+
+
+def test_extraction_cli_reads_defaults_from_settings():
+    custom_settings = SimpleNamespace(
+        extraction_rpm=0.5,
+        extraction_chunk_chars=2500,
+        extraction_max_output_tokens=600,
+    )
+    args = parse_args([], settings=custom_settings)
+
+    assert args.rpm == 0.5
+    assert args.chunk_chars == 2500
+    assert args.max_output_tokens == 600
+
+
+def test_extraction_cli_flags_override_settings():
+    custom_settings = SimpleNamespace(
+        extraction_rpm=0.5,
+        extraction_chunk_chars=2500,
+        extraction_max_output_tokens=600,
+    )
+    args = parse_args(
+        ["--rpm", "1.5", "--chunk-chars", "3500", "--max-output-tokens", "850"],
+        settings=custom_settings,
+    )
+
+    assert args.rpm == 1.5
+    assert args.chunk_chars == 3500
+    assert args.max_output_tokens == 850
+
+
+@pytest.mark.asyncio
+async def test_run_defaults_to_settings_when_parameters_omitted(monkeypatch, tmp_path):
+    custom_settings = SimpleNamespace(
+        extraction_rpm=0.8,
+        extraction_chunk_chars=3200,
+        extraction_max_output_tokens=750,
+        all_providers_unavailable=False,
+    )
+    processed_ids, gateway_config = patch_runner_for_mocked_run(
+        monkeypatch,
+        ["doc-1"],
+        [True],
+    )
+    monkeypatch.setattr(extract_runner, "get_settings", lambda: custom_settings)
+
+    await extract_runner.run(
+        limit=1,
+        failures_path=tmp_path / "failures.json",
+        settings=custom_settings,
+    )
+
+    assert processed_ids == ["doc-1"]
+    assert gateway_config["requests_per_minute"] == 0.8
+    assert gateway_config["max_tokens"] == 750
 
 
 def test_extraction_cli_accepts_targeted_groq_only_single_document():
@@ -528,7 +610,7 @@ async def test_targeted_groq_only_run_processes_only_selected_document_once(
 
     assert processed_ids == ["f-a1716d5b10ab4eaac614"]
     assert gateway_config["groq_only"] is True
-    assert gateway_config["max_tokens"] == 2000
+    assert gateway_config["max_tokens"] == 1000
     output = capsys.readouterr().out
     assert "Target document: f-a1716d5b10ab4eaac614" in output
     assert "Attempted: 1" in output

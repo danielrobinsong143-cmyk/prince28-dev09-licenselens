@@ -53,12 +53,14 @@ async def _run(document_id: str, chunk_index: int = 1) -> DiagnosticOutcome:
     async def load_document(doc_id: str) -> str | None:
         return await _load_document_text(doc_id, settings)
 
+    chunk_chars = getattr(settings, "extraction_chunk_chars", 4000)
     return await run_one_shot_diagnostic(
         document_id,
         load_document=load_document,
         provider=provider,
         prompt=prompt,
         chunk_index=chunk_index,
+        max_chars=chunk_chars,
     )
 
 
@@ -90,11 +92,15 @@ async def _measure_only(document_id: str) -> DiagnosticOutcome:
         outcome.classification = "empty_document_text"
         return outcome
 
+    chunk_chars = getattr(settings, "extraction_chunk_chars", 4000)
+    max_output_tokens = getattr(settings, "extraction_max_output_tokens", 1000)
     try:
         outcome.chunk_measurements = measure_extraction_request_sizes(
             document_text,
             prompt,
             settings.llm_fallback_model,
+            max_tokens=max_output_tokens,
+            max_chars=chunk_chars,
         )
     except Exception as error:
         outcome.classification = "measurement_error"

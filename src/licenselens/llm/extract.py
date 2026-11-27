@@ -10,7 +10,13 @@ from pydantic import ValidationError
 from licenselens.llm.doc_meta import DocMeta
 from licenselens.llm.gateway import LLMGateway, LLMProviderAttempt, LLMResponse
 
-EXTRACTION_MAX_OUTPUT_TOKENS = 2000
+DEFAULT_EXTRACTION_CHUNK_CHARS = 4000
+DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS = 1000
+DEFAULT_EXTRACTION_RPM = 1.0
+
+EXTRACTION_MAX_OUTPUT_TOKENS = DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS
+EXTRACTION_CHUNK_CHARS = DEFAULT_EXTRACTION_CHUNK_CHARS
+EXTRACTION_RPM = DEFAULT_EXTRACTION_RPM
 EXTRACTION_MAX_ATTEMPTS = 3
 
 
@@ -173,9 +179,11 @@ async def extract_metadata_from_chunks(
     version: str,
     document_text: str,
     on_attempt: Callable[[LLMProviderAttempt], Awaitable[None]] | None = None,
+    *,
+    max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> tuple[DocMeta, LLMResponse]:
 
-    chunks = build_extraction_chunks(document_text)
+    chunks = build_extraction_chunks(document_text, max_chars=max_chars)
 
     if not chunks:
         raise ValueError("Document text is empty.")
@@ -215,7 +223,7 @@ async def extract_metadata_from_chunks(
 
 def build_extraction_chunks(
     text: str,
-    max_chars: int = 8000,
+    max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> list[str]:
     """Build the exact per-chunk text sent by extraction and diagnostics."""
     source_chunks = split_document_text(text, max_chars=max_chars)
@@ -233,7 +241,7 @@ def build_extraction_chunks(
 
 def split_document_text(
     text: str,
-    max_chars: int = 8000,
+    max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> list[str]:
     """Split document text into chunks without losing content."""
 

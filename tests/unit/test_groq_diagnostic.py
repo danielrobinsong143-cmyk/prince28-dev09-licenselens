@@ -136,7 +136,7 @@ async def test_diagnostic_reports_http_200_success_without_response_content():
 
 @pytest.mark.asyncio
 async def test_diagnostic_uses_runner_chunk_prefix_and_reports_exact_body_size():
-    document_text = "A" * 8001
+    document_text = "A" * 4001
     prompt = "Extract safely."
     request_bodies = []
 
@@ -176,7 +176,7 @@ async def test_diagnostic_uses_runner_chunk_prefix_and_reports_exact_body_size()
     assert body["messages"][1]["content"] == f"<document>\n{expected_chunk}\n</document>"
     assert result.request_body_bytes == actual_size
     assert result.request_body_bytes == serialized_request_body_size(body)
-    assert "A" * 8001 not in result.to_json()
+    assert "A" * 4001 not in result.to_json()
 
 
 @pytest.mark.asyncio

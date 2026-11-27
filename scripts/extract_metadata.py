@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import ValidationError
 from sqlalchemy import case, func, select
@@ -14,7 +15,9 @@ from licenselens.db.models import Document
 from licenselens.db.repository import DocumentRepository
 from licenselens.db.session import make_engine, make_sessionmaker
 from licenselens.llm.extract import (
-    EXTRACTION_MAX_OUTPUT_TOKENS,
+    DEFAULT_EXTRACTION_CHUNK_CHARS,
+    DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS,
+    DEFAULT_EXTRACTION_RPM,
     LLMOutputTruncatedError,
     combine_document_text,
     extract_metadata_from_chunks,
@@ -78,6 +81,7 @@ async def process_document(
     prompt: str,
     recorder: LLMCallRecorder,
     usage_totals: dict[str, int | float] | None = None,
+    chunk_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> bool:
     """Extract and save metadata for one document."""
 
@@ -116,6 +120,7 @@ async def process_document(
             version=PROMPT_VERSION,
             document_text=document_text,
             on_attempt=record_and_measure,
+            max_chars=chunk_chars,
         )
     except (LLMOutputTruncatedError, ValidationError, ValueError) as error:
         print(f"Document ID: {document.external_id}")
@@ -175,18 +180,37 @@ async def process_document(
 
 async def run(
     limit: int,
-    rpm: float,
+    rpm: float | None = None,
     max_attempts: int | None = None,
     document_id: str | None = None,
     groq_only: bool = False,
     failures_path: Path = DEFAULT_FAILURES_PATH,
+    chunk_chars: int | None = None,
+    max_output_tokens: int | None = None,
+    settings: Any | None = None,
 ) -> None:
     """Run metadata extraction for pending documents."""
+
+    if settings is None:
+        settings = get_settings()
+
+    if rpm is None:
+        rpm = getattr(settings, "extraction_rpm", DEFAULT_EXTRACTION_RPM)
+    if chunk_chars is None:
+        chunk_chars = getattr(settings, "extraction_chunk_chars", DEFAULT_EXTRACTION_CHUNK_CHARS)
+    if max_output_tokens is None:
+        max_output_tokens = getattr(
+            settings, "extraction_max_output_tokens", DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS
+        )
 
     if limit < 1:
         raise ValueError("limit must be at least 1")
     if rpm <= 0 or rpm > 2:
         raise ValueError("rpm must be greater than zero and at most 2")
+    if chunk_chars < 1:
+        raise ValueError("chunk_chars must be at least 1")
+    if max_output_tokens < 1:
+        raise ValueError("max_output_tokens must be at least 1")
     if max_attempts is not None and max_attempts < 1:
         raise ValueError("max_attempts must be at least 1")
     if document_id is not None and limit != 1:
@@ -197,14 +221,13 @@ async def run(
     # A one-success run is the safe single-document smoke-test mode.
     attempt_cap = 1 if document_id is not None or limit == 1 else max_attempts
 
-    settings = get_settings()
     engine = make_engine(settings)
     sessionmaker = make_sessionmaker(engine)
 
     gateway = create_gateway(
         settings,
         requests_per_minute=rpm,
-        max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
+        max_tokens=max_output_tokens,
         groq_only=groq_only,
     )
     recorder = LLMCallRecorder(sessionmaker, settings)
@@ -273,6 +296,7 @@ async def run(
                                 prompt=prompt,
                                 recorder=recorder,
                                 usage_totals=usage_totals,
+                                chunk_chars=chunk_chars,
                             )
 
                             if success:
@@ -350,8 +374,22 @@ async def run(
         await engine.dispose()
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+def parse_args(
+    argv: list[str] | None = None,
+    settings: Any | None = None,
+) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract metadata from LicenseLens documents.")
+
+    if settings is None:
+        settings = get_settings()
+
+    default_rpm = getattr(settings, "extraction_rpm", DEFAULT_EXTRACTION_RPM)
+    default_chunk_chars = getattr(
+        settings, "extraction_chunk_chars", DEFAULT_EXTRACTION_CHUNK_CHARS
+    )
+    default_max_output_tokens = getattr(
+        settings, "extraction_max_output_tokens", DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS
+    )
 
     parser.add_argument(
         "--limit",
@@ -362,8 +400,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--rpm",
         type=float,
-        default=2,
+        default=default_rpm,
         help="maximum request starts per minute per provider (maximum 2 for Groq's token cap)",
+    )
+    parser.add_argument(
+        "--chunk-chars",
+        type=int,
+        default=default_chunk_chars,
+        help="maximum character count per extraction chunk",
+    )
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=default_max_output_tokens,
+        help="maximum completion tokens for metadata extraction",
     )
     parser.add_argument(
         "--max-attempts",
@@ -390,6 +440,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--rpm must be greater than zero")
     if args.rpm > 2:
         parser.error("--rpm must be at most 2 to stay within Groq's 8,000 TPM limit")
+    if args.chunk_chars < 1:
+        parser.error("--chunk-chars must be at least 1")
+    if args.max_output_tokens < 1:
+        parser.error("--max-output-tokens must be at least 1")
     if args.max_attempts is not None and args.max_attempts < 1:
         parser.error("--max-attempts must be at least 1")
     if args.document_id is not None and args.limit != 1:
@@ -399,7 +453,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main() -> None:
-    args = parse_args()
+    settings = get_settings()
+    args = parse_args(settings=settings)
     asyncio.run(
         run(
             args.limit,
@@ -407,6 +462,9 @@ def main() -> None:
             args.max_attempts,
             document_id=args.document_id,
             groq_only=args.groq_only,
+            chunk_chars=args.chunk_chars,
+            max_output_tokens=args.max_output_tokens,
+            settings=settings,
         )
     )
 

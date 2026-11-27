@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from licenselens.llm.doc_meta import DocMeta
 from licenselens.llm.extract import (
+    DEFAULT_EXTRACTION_CHUNK_CHARS,
+    DEFAULT_EXTRACTION_RPM,
     EXTRACTION_MAX_OUTPUT_TOKENS,
     build_extraction_chunks,
     build_messages,
@@ -62,6 +64,7 @@ async def run_one_shot_diagnostic(
     prompt: str,
     chunk_index: int = 1,
     transport: httpx.AsyncBaseTransport | None = None,
+    max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> DiagnosticOutcome:
     """Load one document and make at most one request, reporting safe outcomes."""
     outcome = DiagnosticOutcome()
@@ -85,7 +88,7 @@ async def run_one_shot_diagnostic(
         return outcome
 
     try:
-        chunks = build_extraction_chunks(document_text)
+        chunks = build_extraction_chunks(document_text, max_chars=max_chars)
         outcome.extraction_chunk_count = len(chunks)
         if chunk_index < 1 or chunk_index > len(chunks):
             outcome.classification = "chunk_index_out_of_range"
@@ -281,8 +284,8 @@ def groq_provider_from_settings(settings: Any) -> OpenAICompatProvider:
         api_key=settings.groq_api_key,
         model=settings.llm_fallback_model,
         timeout=settings.llm_timeout_seconds,
-        requests_per_minute=2,
-        max_tokens=EXTRACTION_MAX_OUTPUT_TOKENS,
+        requests_per_minute=getattr(settings, "extraction_rpm", DEFAULT_EXTRACTION_RPM),
+        max_tokens=getattr(settings, "extraction_max_output_tokens", EXTRACTION_MAX_OUTPUT_TOKENS),
     )
 
 
@@ -292,10 +295,11 @@ def measure_extraction_request_sizes(
     model: str,
     *,
     max_tokens: int = EXTRACTION_MAX_OUTPUT_TOKENS,
+    max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
 ) -> list[dict[str, int]]:
     """Measure each exact extraction request body without creating an HTTP client."""
-    wrapped_chunks = build_extraction_chunks(document_text)
-    source_chunks = split_document_text(document_text)
+    wrapped_chunks = build_extraction_chunks(document_text, max_chars=max_chars)
+    source_chunks = split_document_text(document_text, max_chars=max_chars)
     measurements = []
 
     for index, (source_chunk, wrapped_chunk) in enumerate(

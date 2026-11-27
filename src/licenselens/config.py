@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     usd_inr: float = 95.0
     prompts_dir: Path = Path("prompts")
 
+    extraction_chunk_chars: int = 4000
+    extraction_max_output_tokens: int = 1000
+    extraction_rpm: float = 1.0
+
     @field_validator("database_url")
     @classmethod
     def _asyncpg(cls, value: str) -> str:

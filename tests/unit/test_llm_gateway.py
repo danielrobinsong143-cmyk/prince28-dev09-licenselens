@@ -805,6 +805,49 @@ async def test_provider_honors_retry_after_for_temporary_429(monkeypatch, caplog
 
 
 @pytest.mark.asyncio
+async def test_provider_http_retry_respects_request_pacer(monkeypatch):
+    from licenselens.llm import gateway as gateway_module
+
+    calls = 0
+    pacer_slots_waited = 0
+
+    class TrackingPacer:
+        async def wait_for_slot(self):
+            nonlocal pacer_slots_waited
+            pacer_slots_waited += 1
+
+    pacer = TrackingPacer()
+
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(500, text="temporary server error")
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    monkeypatch.setattr(gateway_module, "MAX_RETRIES", 1)
+
+    provider = OpenAICompatProvider(
+        name="groq",
+        base_url="https://example.com/v1",
+        api_key="test-key",  # pragma: allowlist secret
+        model="test-model",
+        request_pacer=pacer,
+    )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        result = await provider._complete_with_retry(
+            client,
+            [{"role": "user", "content": "Test"}],
+            0.0,
+        )
+
+    assert result["choices"][0]["message"]["content"] == "ok"
+    assert calls == 2
+    assert pacer_slots_waited == 2
+
+
+@pytest.mark.asyncio
 async def test_provider_complete_preserves_finish_reason(monkeypatch):
     provider = OpenAICompatProvider(
         name="groq",
