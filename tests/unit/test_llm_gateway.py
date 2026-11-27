@@ -85,6 +85,31 @@ def test_create_gateway_groq_only_does_not_construct_gemini():
     assert gateway.fallback is None
 
 
+def test_create_gateway_gemini_only_does_not_construct_groq():
+    settings = SimpleNamespace(
+        llm_fallback_base_url="https://groq.example/v1",
+        groq_api_key="groq-test-key",  # pragma: allowlist secret
+        llm_fallback_model="openai/gpt-oss-20b",
+        llm_timeout_seconds=30,
+        llm_primary_base_url="https://gemini.example/v1",
+        gemini_api_key="gemini-test-key",  # pragma: allowlist secret
+        llm_primary_model="gemini-3.1-flash-lite",
+    )
+
+    gateway = create_gateway(
+        settings,
+        gemini_only=True,
+        requests_per_minute=1,
+        max_tokens=1000,
+    )
+
+    assert gateway.primary.name == "gemini"
+    assert gateway.primary.model == "gemini-3.1-flash-lite"
+    assert gateway.primary.max_tokens == 1000
+    assert gateway.primary.request_pacer is not None
+    assert gateway.fallback is None
+
+
 def test_create_gateway_shares_extraction_pacing_across_providers():
     settings = SimpleNamespace(
         llm_fallback_base_url="https://groq.example/v1",

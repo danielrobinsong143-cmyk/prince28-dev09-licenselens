@@ -31,6 +31,7 @@ def test_extraction_cli_defaults_work_without_environment_variables(monkeypatch)
     assert args.max_attempts is None
     assert args.document_id is None
     assert args.groq_only is False
+    assert args.gemini_only is False
 
 
 def test_extraction_cli_defaults():
@@ -43,6 +44,19 @@ def test_extraction_cli_defaults():
     assert args.max_attempts is None
     assert args.document_id is None
     assert args.groq_only is False
+    assert args.gemini_only is False
+
+
+def test_extraction_cli_accepts_gemini_only():
+    args = parse_args(["--gemini-only"])
+
+    assert args.gemini_only is True
+    assert args.groq_only is False
+
+
+def test_extraction_cli_rejects_conflicting_provider_flags():
+    with pytest.raises(SystemExit):
+        parse_args(["--groq-only", "--gemini-only"])
 
 
 def test_extraction_cli_accepts_custom_chunk_chars_and_tokens():

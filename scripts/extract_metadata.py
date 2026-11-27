@@ -184,6 +184,7 @@ async def run(
     max_attempts: int | None = None,
     document_id: str | None = None,
     groq_only: bool = False,
+    gemini_only: bool = False,
     failures_path: Path = DEFAULT_FAILURES_PATH,
     chunk_chars: int | None = None,
     max_output_tokens: int | None = None,
@@ -229,6 +230,7 @@ async def run(
         requests_per_minute=rpm,
         max_tokens=max_output_tokens,
         groq_only=groq_only,
+        gemini_only=gemini_only,
     )
     recorder = LLMCallRecorder(sessionmaker, settings)
 
@@ -435,8 +437,15 @@ def parse_args(
         action="store_true",
         help="disable Gemini fallback and use only Groq",
     )
+    parser.add_argument(
+        "--gemini-only",
+        action="store_true",
+        help="use only Gemini and disable Groq",
+    )
 
     args = parser.parse_args(argv)
+    if args.groq_only and args.gemini_only:
+        parser.error("--groq-only and --gemini-only cannot both be enabled")
 
     if args.limit < 1:
         parser.error("--limit must be at least 1")
@@ -467,6 +476,7 @@ def main() -> None:
             args.max_attempts,
             document_id=args.document_id,
             groq_only=args.groq_only,
+            gemini_only=args.gemini_only,
             chunk_chars=args.chunk_chars,
             max_output_tokens=args.max_output_tokens,
             settings=settings,

@@ -1102,28 +1102,43 @@ def create_gateway(
     requests_per_minute: float | None = None,
     max_tokens: int | None = None,
     groq_only: bool = False,
+    gemini_only: bool = False,
 ) -> LLMGateway:
     """Create the configured Groq/Gemini gateway.
 
     Extraction jobs pass a low request rate and output cap. Interactive requests leave
     both unset so the provider's normal gateway behavior is preserved.
     """
+    if groq_only and gemini_only:
+        raise ValueError("groq_only and gemini_only cannot both be enabled")
 
     shared_pacer = RequestPacer(requests_per_minute) if requests_per_minute is not None else None
     provider_rpm = None if shared_pacer is not None else requests_per_minute
-    primary = OpenAICompatProvider(
-        name="groq",
-        base_url=settings.llm_fallback_base_url,
-        api_key=settings.groq_api_key,
-        model=settings.llm_fallback_model,
-        timeout=settings.llm_timeout_seconds,
-        requests_per_minute=provider_rpm,
-        max_tokens=max_tokens,
-        request_pacer=shared_pacer,
-    )
+    if gemini_only:
+        primary = OpenAICompatProvider(
+            name="gemini",
+            base_url=settings.llm_primary_base_url,
+            api_key=settings.gemini_api_key,
+            model=settings.llm_primary_model,
+            timeout=settings.llm_timeout_seconds,
+            requests_per_minute=provider_rpm,
+            max_tokens=max_tokens,
+            request_pacer=shared_pacer,
+        )
+    else:
+        primary = OpenAICompatProvider(
+            name="groq",
+            base_url=settings.llm_fallback_base_url,
+            api_key=settings.groq_api_key,
+            model=settings.llm_fallback_model,
+            timeout=settings.llm_timeout_seconds,
+            requests_per_minute=provider_rpm,
+            max_tokens=max_tokens,
+            request_pacer=shared_pacer,
+        )
 
     fallback = None
-    if not groq_only:
+    if not groq_only and not gemini_only:
         fallback = OpenAICompatProvider(
             name="gemini",
             base_url=settings.llm_primary_base_url,
