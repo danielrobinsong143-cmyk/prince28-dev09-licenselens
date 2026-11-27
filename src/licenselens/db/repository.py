@@ -85,6 +85,26 @@ class DocumentRepository:
         doc = await self.session.scalar(select(Document).where(Document.external_id == external_id))
         return to_dict(doc) if doc else None
 
+    async def update_metadata(
+        self,
+        external_id: str,
+        metadata: dict[str, Any],
+    ) -> Document | None:
+        """Merge extracted metadata into an existing document."""
+        doc = await self.session.scalar(select(Document).where(Document.external_id == external_id))
+
+        if doc is None:
+            return None
+
+        existing = dict(doc.metadata_ or {})
+        existing.update(metadata)
+
+        doc.metadata_ = existing
+
+        await self.session.flush()
+
+        return doc
+
 
 class LlmCallRepository:
     """Stores and retrieves LLM provider usage records."""

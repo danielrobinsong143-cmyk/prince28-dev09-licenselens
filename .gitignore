@@ -26,5 +26,9 @@ data/raw/
 .coverage
 htmlcov/
 
+# Locally cached LLM evaluation outputs
+eval/cache/
+data/extraction_failures.json
+
 # Windows
 Thumbs.db
