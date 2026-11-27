@@ -19,6 +19,20 @@ from scripts import extract_metadata as extract_runner
 from scripts.extract_metadata import parse_args, process_document
 
 
+def test_extraction_cli_defaults_work_without_environment_variables(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    args = parse_args([])
+
+    assert args.limit == 50
+    assert args.rpm == 1.0
+    assert args.chunk_chars == 4000
+    assert args.max_output_tokens == 1000
+    assert args.max_attempts is None
+    assert args.document_id is None
+    assert args.groq_only is False
+
+
 def test_extraction_cli_defaults():
     args = parse_args([])
 
@@ -83,6 +97,81 @@ def test_extraction_cli_flags_override_settings():
     assert args.rpm == 1.5
     assert args.chunk_chars == 3500
     assert args.max_output_tokens == 850
+
+
+def test_extraction_cli_with_environment_backed_settings(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "ci")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test_db")
+    monkeypatch.setenv("EXTRACTION_RPM", "0.75")
+    monkeypatch.setenv("EXTRACTION_CHUNK_CHARS", "2200")
+    monkeypatch.setenv("EXTRACTION_MAX_OUTPUT_TOKENS", "550")
+
+    from licenselens.config import Settings
+
+    settings = Settings()
+    args = parse_args([], settings=settings)
+
+    assert args.rpm == 0.75
+    assert args.chunk_chars == 2200
+    assert args.max_output_tokens == 550
+
+
+def test_extraction_cli_flags_override_environment_backed_settings(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "ci")
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://localhost:5432/test_db")
+    monkeypatch.setenv("EXTRACTION_RPM", "0.75")
+    monkeypatch.setenv("EXTRACTION_CHUNK_CHARS", "2200")
+    monkeypatch.setenv("EXTRACTION_MAX_OUTPUT_TOKENS", "550")
+
+    from licenselens.config import Settings
+
+    settings = Settings()
+    args = parse_args(["--rpm", "1.8", "--chunk-chars", "3800"], settings=settings)
+
+    assert args.rpm == 1.8
+    assert args.chunk_chars == 3800
+    assert args.max_output_tokens == 550
+
+
+def test_main_passes_settings_to_parse_args_and_run(monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, "argv", ["extract_metadata.py"])
+    custom_settings = SimpleNamespace(
+        extraction_rpm=0.6,
+        extraction_chunk_chars=2800,
+        extraction_max_output_tokens=700,
+    )
+    seen_parse_args_settings = []
+    seen_run_kwargs = {}
+
+    monkeypatch.setattr(extract_runner, "get_settings", lambda: custom_settings)
+
+    orig_parse_args = extract_runner.parse_args
+
+    def mock_parse_args(argv=None, settings=None):
+        seen_parse_args_settings.append(settings)
+        return orig_parse_args(argv, settings=settings)
+
+    def mock_run(*args, **kwargs):
+        seen_run_kwargs.update(kwargs)
+
+        async def _noop():
+            pass
+
+        return _noop()
+
+    def fake_asyncio_run(coro):
+        coro.close()
+
+    monkeypatch.setattr(extract_runner, "parse_args", mock_parse_args)
+    monkeypatch.setattr(extract_runner, "run", mock_run)
+    monkeypatch.setattr(extract_runner.asyncio, "run", fake_asyncio_run)
+
+    extract_runner.main()
+
+    assert seen_parse_args_settings == [custom_settings]
+    assert seen_run_kwargs["settings"] is custom_settings
 
 
 @pytest.mark.asyncio

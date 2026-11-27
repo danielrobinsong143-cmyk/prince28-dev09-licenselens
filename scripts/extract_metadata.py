@@ -380,15 +380,20 @@ def parse_args(
 ) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Extract metadata from LicenseLens documents.")
 
-    if settings is None:
-        settings = get_settings()
-
-    default_rpm = getattr(settings, "extraction_rpm", DEFAULT_EXTRACTION_RPM)
-    default_chunk_chars = getattr(
-        settings, "extraction_chunk_chars", DEFAULT_EXTRACTION_CHUNK_CHARS
+    default_rpm = (
+        getattr(settings, "extraction_rpm", DEFAULT_EXTRACTION_RPM)
+        if settings is not None
+        else DEFAULT_EXTRACTION_RPM
     )
-    default_max_output_tokens = getattr(
-        settings, "extraction_max_output_tokens", DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS
+    default_chunk_chars = (
+        getattr(settings, "extraction_chunk_chars", DEFAULT_EXTRACTION_CHUNK_CHARS)
+        if settings is not None
+        else DEFAULT_EXTRACTION_CHUNK_CHARS
+    )
+    default_max_output_tokens = (
+        getattr(settings, "extraction_max_output_tokens", DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS)
+        if settings is not None
+        else DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS
     )
 
     parser.add_argument(
