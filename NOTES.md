@@ -547,6 +547,10 @@ Daily breakdown:
 - The v4 improvement added a clearer distinction between general analysis of named open-source licences and questions requiring access to private repositories or actual dependency information.
 - This corrected both question 4 (`docs`) and question 20 (`personal`) in this evaluation.
 - One remaining error in the earlier versions: question 20 was treated as a general licence question, even though answering it requires private package and current product information.
+- **Hardest earlier wrong question:** Question 20 ("Does the licence of the private package in our production repository allow us to distribute our current product to customers?"). It requires private package and current product information, not general licence knowledge.
+- **Wrong answers in current evaluation:** `classify_v4` achieved 20/20, so there were no wrong answers in the current 20-question evaluation.
+- **Changed test-set labels:** None (confirmed by evaluation git history; ground-truth labels in `eval/prompt_testset.jsonl` remained unchanged).
+- **Token trade-off:** Average input tokens increased from 113 (v1) to 322 (v4), approximately 2.85x, while accuracy improved from 55% to 100%.
 - No test-set leakage warnings appeared during the comparison.
 
 **Limitation:** The 100% result applies only to this 20-question test set. Unseen questions still need evaluation.
@@ -595,32 +599,99 @@ The labelled evaluation set contains 20 questions. Results recorded from the pro
 
 The scalar fields are strict strings, integers, booleans, or nullable values as defined by the model. `topics`, `permissions`, `conditions`, and `limitations` are lists limited to eight items; topics are lowercased and deduplicated. Missing optional values remain null or empty lists rather than being inferred.
 
+
 #### Extraction progress and verification
+- **Document-level parsed / repaired / failed counts:** Not separately recorded in the available evidence. The 109 successful and 13 failed LLM calls are API invocation counts, not document counts.
+- **Remaining records:** 788 records currently lack `doc_kind`; their eligibility for extraction has not yet been established.
 
-| Run or verification | Successful | Failed / pending outcome |
-|---|---:|---|
-| Initial extraction set | 6 | Six initial successes were reported; individual names were not included in the supplied verification results. |
-| First controlled batch | 10 | 0 failures. |
-| Second controlled batch | 1 | 1 failed with Groq HTTP 429. |
-| Retry of the quota-blocked document | 0 | 1 failed again with Groq HTTP 429. |
-| Five-document trial | 2 | AAL and AdaCore-doc succeeded; 3D-Slicer-1.0, Adobe-2006, and Adobe-Display-PostScript failed with `output_truncated`. |
+- **Total documents in database:** 838
+- **Documents with DocMeta:** 50 (100% of the milestone target verified; verified document milestone is exactly 50 records).
+- **Documents without DocMeta:** 788 (records currently lacking the `doc_kind` field; their extraction eligibility is not yet established).
+- **Model invocations vs document extractions:** The 109 successful LLM calls are model invocations across multi-chunk and retried documents, NOT 109 successful document extractions.
+- **Detailed parse/repair breakdown:** Exact parsed, repaired, and failed document counts are not available from the current evidence and are explicitly marked as not separately recorded.
+- **Extraction prompt version:** `extract_v1`
+- **Document-level parsed / repaired / failed counts:** Not separately recorded in the available evidence. The 109 successful and 13 failed LLM calls are API invocation counts, not document counts.
+- **Remaining records:** 788 records currently lack `doc_kind`; their eligibility for extraction has not yet been established.
+- **Recorded failure:** One document has three recorded attempts ending in `provider_quota_exhausted`.
+- **Milestone status:** Achieved. Exactly 50 documents have been independently verified in Neon PostgreSQL using read-only SQL transactions (`SET TRANSACTION READ ONLY`). Each verified document satisfies:
+  - Database record exists.
+  - `metadata.doc_kind` is present and non-empty.
+  - All 12 required `DocMeta` fields are present.
+  - All 6 original ingestion fields (`path`, `chars`, `pages`, `parser`, `source`, `tables`) are fully preserved.
+  - Excluded from the pending extraction query (`doc_type != 'record'` and missing `metadata.doc_kind`).
 
-The run figures above describe separate reported runs; overlap between those runs was not supplied, so they are not summed to derive the database total. The current verified database count is **19 valid records out of 818**, with **799 pending**. The 50-success target is incomplete: **31 additional successful extractions** are needed. Groq-only extraction is currently blocked by provider quota: Groq returned HTTP 429, and Gemini fallback also returned HTTP 429 due to quota exhaustion.
+#### Earlier five-record manual verification history (ADSL, Abstyles, Adobe-Utopia)
 
-Five extracted records were manually compared with their original source text. The comparison found valid-but-wrong metadata: `spdx_id` was null for ADSL, Abstyles, and Adobe-Utopia even though the source `licenseId` values were present. Those three Neon records were manually corrected and the corrections were verified. This was a data correction; it did not change the DocMeta contract.
+Earlier in Day 9, five extracted records were manually compared with their original source text. That manual comparison identified valid-but-wrong metadata: `spdx_id` was null for ADSL, Abstyles, and Adobe-Utopia even though the source `licenseId` values were present in the source files. Those three Neon records were manually corrected and verified in the database. That was a direct data correction that preserved the DocMeta contract.
 
-#### Cost and remaining work
+#### Recorded extraction cost and LLM calls
 
-No verified extraction-cost total was supplied for these runs, so no total is reported here. The existing Day 8 provider-test cost remains recorded in its original section and is not presented as extraction cost. Resume extraction after quota availability returns, verify new records against source text, and continue until 50 successful records are confirmed. Do not count a failed or merely attempted document toward the target.
+Extraction model usage across the corpus extraction runs is tracked through the `llm_calls` repository. Across all runs, model calls and documents remain strictly distinguished (individual multi-chunk or retried documents generate multiple model calls):
+
+- **Total LLM calls:** 122
+- **Successful LLM calls:** 109 (this count represents model API invocations, not unique documents)
+- **Failed LLM calls:** 13
+- **Input tokens from successful calls:** 215,027
+- **Output tokens from successful calls:** 92,077
+- **Estimated recorded extraction cost:** ₹8.345240 (estimated based on configured model token rates, not an invoice)
+- **Approximate average allocated cost per verified DocMeta record:** ₹0.166905 (₹8.345240 / 50 records)
+
+**Provider Breakdown:**
+
+| Provider & Model | Successful calls | Failed calls | Estimated cost |
+|---|---:|---:|---:|
+| Gemini 3.1 Flash Lite | 31 | 0 | ₹4.606454 |
+| Gemini 3.8 Flash | 0 | 4 | ₹0.000000 |
+| Groq GPT-OSS-20B | 78 | 9 | ₹3.738786 |
+| **Total** | **109** | **13** | **₹8.345240** |
+
+- **Recorded Failed Document:** One document, `f-106ab0d93705b837d4ca`, recorded 3 failed attempts due to `provider_quota_exhausted`. It remains safely tracked in `data/extraction_failures.json` and currently remains without DocMeta.
+
+#### Valid-but-wrong extraction case and merge fix (AFL-2.0 vs AFPL-2.0)
+
+During live extraction inspection, a valid-but-wrong metadata extraction was identified on the production record for Academic Free License v2.0 (`f-0e482ccfd4cdbfe36b04`):
+- **Source licenseId:** `AFL-2.0`
+- **Extracted spdx_id:** `AFPL-2.0` (incorrect hallucinated identifier)
+- **Source isOsiApproved:** `true`
+- **Extracted osi_approved:** `true`
+- **Extracted summary:** Repeated itself multiple times across chunks.
+
+**Root Cause:**
+1. `AFL-2.0.json` (34,638 characters) was split across 13 pages during plain text ingestion, producing 9 extraction chunks.
+2. In Chunk 1, the model saw only the preamble text ("The Academic Free License v. 2.0") without the structured `"licenseId": "AFL-2.0"` (which appeared on Page 7 in Chunk 6). The model guessed `AFPL-2.0`.
+3. `merge_metadata()` previously locked in any scalar where `merged[key] is not None`. When Chunk 6 correctly extracted `AFL-2.0`, `merge_metadata()` ignored it because `spdx_id` had already been populated. Conversely, `osi_approved` was null in Chunk 1 and true in Chunk 6, which is why it was accepted.
+4. `merge_metadata()` previously performed naive space-concatenation on summaries (`merged[key] = f"{merged[key]} {value}"`), accumulating multi-chunk summaries into a repetitive block.
+
+**Resolution & Merge Fix (Commit `1e44ce5`):**
+- **Strict SPDX Evidence Precedence:**
+  1. `exact_spdx_id` supplied by a trusted caller is authoritative. (`exact_spdx_id` is an optional merge-function interface parameter on `merge_metadata()` / `extract_metadata_from_chunks()` and is not currently supplied or wired into the production extraction runner in `scripts/extract_metadata.py`).
+  2. Otherwise, accept an SPDX identifier only when explicitly corroborated by the corresponding source chunk text using identifier-aware boundary matching (`(?<![a-zA-Z0-9.+-])ID(?![a-zA-Z0-9.+-])`).
+  3. If multiple different identifiers are corroborated, return `null` rather than choosing arbitrarily.
+  4. If candidates are not corroborated by source text, return `null`. Unanimous model agreement without source-text evidence is strictly rejected.
+  5. If no identifier exists, return `null`.
+- **Chunk Text Parity:** When `chunk_texts` is supplied, `len(chunk_texts) == len(results)` is strictly enforced, raising `ValueError` on length mismatch.
+- **Trusted Override Validation:** `exact_spdx_id` normalizes whitespace and rejects blank or whitespace-only inputs with `ValueError`.
+- **Summary Fix:** Naive concatenation was replaced with deterministic selection of the primary concise summary (the first non-empty summary from the ordered chunks).
+- **Prompt Guidance:** Updated `prompts/extract_v1.md` to strictly prohibit guessing or constructing SPDX identifiers from licence names or document titles, mandating `null` when not explicitly stated.
+
+#### Live production API verification (27 Nov 2026)
+
+Read-only verification of the live deployed production API on Render yielded the following outcomes:
+- `GET /v1/documents?doc_kind=licence&limit=3`: HTTP/API success, total 30.
+- `GET /v1/documents?doc_kind=license&limit=3`: HTTP/API success, total 17.
+- `GET /v1/usage`: 142 calls, 15 errors, 20 fallbacks, ₹8.660985 total application usage over seven days.
+- **Usage scope:** The ₹8.660985 figure represents application-wide usage across all services and operations over seven days, not an extraction-only cost (the extraction-specific estimated cost is ₹8.345240 across 122 extraction calls).
+- **Academic Free License v2.0 live status:** The live record for Academic Free License v2.0 (`f-0e482ccfd4cdbfe36b04`) in production still returns `spdx_id: AFPL-2.0` and a repeated summary. The fix in commit `1e44ce5` is committed in the PR branch `feat/day-09-prompts` but has not yet been deployed to Render.
+- Input tokens: 219,409
+- Output tokens: 97,916
 
 ### Milestone 4 — extraction implementation
 
 - `DocMeta` forbids extra fields and validates strict Pydantic types. The extraction prompt describes all 12 model fields.
-- Mocked coverage exercises JSON parsing, repair, validation, truncation detection, 8,000-character chunking, merging, metadata preservation and persistence confirmation.
-- The five-document trial recorded three `output_truncated` failures. The code assigns this reason for a token-limit finish reason or JSON that ends incomplete. The local failure file does not retain which condition occurred, historical finish reasons, or token counts; those calls were not queried from the database during this work.
-- Extraction now retries truncated output within the existing three attempts, requests up to 2,000 output tokens (previously 1,000), and asks for compact summaries/list entries. The 8,000-character input chunks remain unchanged because output truncation is distinct from HTTP 413 request-size errors. If all three responses remain truncated, the document stays pending and its resumable failure record remains `output_truncated`.
+- Automated tests exercise JSON parsing, repair, validation, truncation recovery, configurable chunking, metadata merging, and persistence confirmation.
+- Output truncation is detected via provider finish reason (`length`, `max_tokens`) or incomplete JSON at EOF, triggering targeted compact-retry messages before raising `LLMOutputTruncatedError`.
+- Configurable settings precedence is enforced: CLI flags override environment-backed Settings, which override code defaults (`DEFAULT_EXTRACTION_CHUNK_CHARS = 4000`, `DEFAULT_EXTRACTION_MAX_OUTPUT_TOKENS = 1000`, `DEFAULT_EXTRACTION_RPM = 1.0`).
 - The runner counts success only after the repository update is confirmed and committed. Existing parser metadata is merged, not replaced.
-- No live extraction result or database record was verified during this completion. Do not treat Milestone 4's runtime acceptance as proven until the read-only verifier confirms saved results.
 
 ### Groq 400 and 413 investigation
 
@@ -635,8 +706,8 @@ No verified extraction-cost total was supplied for these runs, so no total is re
 - Safe failure IDs, reason codes, attempt counts and timestamps are stored locally in ignored `data/extraction_failures.json`. The state contains no document text or provider error body and requires reruns from the same workspace to preserve retry priority. No database schema change is required.
 - Per-attempt progress, successful input/output token totals, estimated INR cost and final counts are reported. LLM provider attempts continue to be recorded through the existing `llm_calls` repository.
 - The configured request-start rate is shared across Groq and Gemini, and applies to HTTP retries as well as first attempts.
-- `scripts/verify_extraction_metadata.py` performs read-only verification and prints aggregate counts only. It can check selected document IDs with repeated `--document-id` options.
-- The five-document manual procedure is below. It has not been run because live provider calls and extraction are outside this work.
+- `scripts/verify_extraction_metadata.py` performs read-only verification and prints aggregate validation outcomes. It can check selected document IDs with repeated `--document-id` options.
+- The following commands are retained as the reproducible operator procedure. They are examples, not a record of the exact commands used across the six batches that achieved the 50-record milestone.
 
 ```powershell
 # Inspect a small pending sample (read-only).
@@ -676,14 +747,13 @@ This targets 50 successful saves and stops earlier when no pending documents rem
 
 ### Day 9 runtime acceptance status
 
-- Prompt evaluation results were checked against the local cache; historical model attribution is missing.
-- Unit and mocked implementation checks can verify safety and behavior, but they cannot prove that 50 documents were saved or that Neon contains no unexpected records.
-- Full-corpus extraction, five-document real verification, and read-only production database verification remain operator-run steps. Do not claim those runtime criteria complete based on mocked tests.
+- **Runtime Target Complete:** Exactly 50 documents have been extracted, saved to Neon PostgreSQL, and independently verified using read-only transactions across Batches 1 through 6.
+- All 50 records possess 100% of the 12 required DocMeta fields and all 6 original ingestion metadata fields.
+- 788 documents remain without DocMeta in the database.
 
 ### Local Day 9 validation
 
-- `uv run pytest -v`: **174 passed, 11 skipped**. The skipped tests are PostgreSQL integration tests; `TEST_DATABASE_URL` was unset, so no database was created or changed.
-- `uv run poe lint`: passed; Ruff reported all files checked and formatted.
-- `uv run python -m compileall src scripts`: passed.
-- `uv run git diff --check`: passed.
-- Pytest emitted one optional SOCKS dependency warning from urllib3; test results were unaffected.
+- `uv run pytest tests/unit`: **214 passed** (including all SPDX boundary, length parity, override validation, and non-concatenation regression tests).
+- `uv run ruff check .`: passed with 0 errors.
+- `uv run ruff format --check .`: passed with 87 files clean.
+- `git diff --check`: passed with 0 whitespace or merge conflicts.
