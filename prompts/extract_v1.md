@@ -28,7 +28,7 @@ Your task is to read the supplied document and extract accurate, structured meta
 
 ## Licence-specific metadata fields
 
-- `spdx_id`: SPDX licence identifier, if applicable.
+- `spdx_id`: Exact SPDX licence identifier explicitly stated in the document, or null if not explicitly present. Do not guess or fabricate.
 - `name`: Human-readable name of the licence, if applicable.
 - `osi_approved`: Whether the licence is OSI-approved, if supported by the available information.
 - `copyleft_type`: Copyleft classification, if applicable.
@@ -41,6 +41,8 @@ Your task is to read the supplied document and extract accurate, structured meta
 - For non-licence documents, use null for `name`.
 - Do not assume that every document is a licence.
 - For non-licence documents, use null for inapplicable licence-specific scalar fields and empty lists for inapplicable licence-specific list fields.
+- Do not guess, infer, or construct an SPDX identifier from the licence name or document title. Return null for `spdx_id` unless an exact, authoritative SPDX identifier (such as in an SPDX-License-Identifier tag, standard license header, or structured licenseId field) is explicitly present in the text.
+- Return null when an exact identifier is not available.
 - Do not infer OSI approval from the presence of an SPDX identifier.
 - Distinguish permissions, conditions and limitations carefully.
 - Preserve the meaning of the original document.

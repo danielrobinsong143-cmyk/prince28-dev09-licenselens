@@ -388,8 +388,8 @@ def test_merge_metadata_combines_unique_list_fields():
 
     assert result.topics == ["software", "opensource", "copyright"]
     assert result.permissions == ["use", "modify"]
-    assert "First chunk summary" in result.summary
-    assert "Second chunk summary" in result.summary
+    assert result.summary == "First chunk summary"
+    assert "Second chunk summary" not in result.summary
 
 
 def test_merge_metadata_keeps_merged_lists_within_schema_maximum():
@@ -429,12 +429,299 @@ def test_merge_metadata_keeps_first_non_null_scalar():
         spdx_id="MIT",
     )
 
-    result = merge_metadata([first, second])
+    result = merge_metadata(
+        [first, second],
+        chunk_texts=["", "Licensed under MIT terms."],
+    )
 
     assert result.doc_kind == "license"
     assert result.language == "en"
     assert result.year == 2024
     assert result.spdx_id == "MIT"
+
+
+def test_merge_metadata_early_hallucination_later_corroborated():
+    """1. Early hallucinated AFPL-2.0; later source contains licenseId AFL-2.0 -> AFL-2.0."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Academic Free License v2.0 text.",
+        spdx_id="AFPL-2.0",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Metadata section.",
+        spdx_id="AFL-2.0",
+    )
+    chunk_texts = [
+        "The Academic Free License v. 2.0 applies to any original work.",
+        'Standard header: "licenseId": "AFL-2.0", isOsiApproved: true',
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id == "AFL-2.0"
+
+
+def test_merge_metadata_early_corroborated_later_hallucination():
+    """2. Early source explicitly contains MIT; later chunk hallucinates BSD-3-Clause -> MIT."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="MIT license terms.",
+        spdx_id="MIT",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Disclaimer terms.",
+        spdx_id="BSD-3-Clause",
+    )
+    chunk_texts = [
+        "SPDX-License-Identifier: MIT\nPermission is hereby granted...",
+        "THE SOFTWARE IS PROVIDED AS IS WITHOUT WARRANTY OF ANY KIND.",
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id == "MIT"
+
+
+def test_merge_metadata_conflicting_corroborated_ids_returns_null():
+    """3. Conflicting corroborated IDs -> null."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="First part dual-licensed under MIT.",
+        spdx_id="MIT",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Second part dual-licensed under Apache-2.0.",
+        spdx_id="Apache-2.0",
+    )
+    chunk_texts = [
+        "This component is distributed under SPDX-License-Identifier: MIT.",
+        "This other component is distributed under SPDX-License-Identifier: Apache-2.0.",
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id is None
+
+
+def test_merge_metadata_conflicting_uncorroborated_ids_returns_null():
+    """4. Conflicting uncorroborated IDs -> null."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Generic terms.",
+        spdx_id="GPL-2.0-only",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Additional terms.",
+        spdx_id="MIT",
+    )
+    chunk_texts = [
+        "All original authors retain their respective copyrights.",
+        "Redistribution without modification is strictly allowed.",
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id is None
+
+
+def test_merge_metadata_unanimous_uncorroborated_ids_returns_null():
+    """5. Unanimous but uncorroborated IDs -> null."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Permissive terms.",
+        spdx_id="MIT",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Permissive terms continuation.",
+        spdx_id="MIT",
+    )
+    chunk_texts = [
+        "Permission is hereby granted to copy and distribute this work.",
+        "The software is provided without any warranty whatsoever.",
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id is None
+
+
+def test_merge_metadata_no_identifiers_returns_null():
+    """6. No identifiers -> null."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Proprietary terms.",
+        spdx_id=None,
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Additional restrictions.",
+        spdx_id=None,
+    )
+    chunk_texts = [
+        "All rights reserved. Proprietary software.",
+        "Do not redistribute without written consent.",
+    ]
+
+    result = merge_metadata([first, second], chunk_texts=chunk_texts)
+
+    assert result.spdx_id is None
+
+
+def test_merge_metadata_exact_spdx_id_overrides_conflicting_outputs():
+    """7. exact_spdx_id overrides conflicting model outputs."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="First chunk.",
+        spdx_id="INFERRED-1.0",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Second chunk.",
+        spdx_id="INFERRED-2.0",
+    )
+    chunk_texts = [
+        "Text mentions INFERRED-1.0 here.",
+        "Text mentions INFERRED-2.0 here.",
+    ]
+
+    result = merge_metadata(
+        [first, second],
+        exact_spdx_id="  TRUSTED-OVERRIDE-1.0 \n",
+        chunk_texts=chunk_texts,
+    )
+
+    assert result.spdx_id == "TRUSTED-OVERRIDE-1.0"
+
+
+def test_merge_metadata_blank_exact_spdx_id_raises_value_error():
+    """Reject empty or whitespace-only exact_spdx_id."""
+    doc = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Summary text.",
+        spdx_id="MIT",
+    )
+
+    with pytest.raises(ValueError, match="exact_spdx_id must not be empty or whitespace-only"):
+        merge_metadata([doc], exact_spdx_id="")
+
+    with pytest.raises(ValueError, match="exact_spdx_id must not be empty or whitespace-only"):
+        merge_metadata([doc], exact_spdx_id="   \t\n")
+
+
+def test_merge_metadata_chunk_texts_length_mismatch_raises_value_error():
+    """Require len(chunk_texts) == len(results) when chunk_texts is supplied."""
+    first = DocMeta(doc_kind="license", language="en", summary="Chunk 1", spdx_id="MIT")
+    second = DocMeta(doc_kind="license", language="en", summary="Chunk 2", spdx_id="MIT")
+
+    # Direction 1: chunk_texts shorter than results (1 < 2)
+    with pytest.raises(
+        ValueError, match=r"chunk_texts length \(1\) must match results length \(2\)"
+    ):
+        merge_metadata([first, second], chunk_texts=["Text 1"])
+
+    # Direction 2: chunk_texts longer than results (2 > 1)
+    with pytest.raises(
+        ValueError, match=r"chunk_texts length \(2\) must match results length \(1\)"
+    ):
+        merge_metadata([first], chunk_texts=["Text 1", "Text 2"])
+
+
+def test_merge_metadata_boundary_matching_prevents_false_positives():
+    """8. Identifier boundary matching prevents false positives."""
+    from licenselens.llm.extract import is_spdx_corroborated
+
+    # "MIT" in substring words like commit/admit/transmit must NOT match
+    assert not is_spdx_corroborated("MIT", "We commit to admitting this patch.")
+    assert not is_spdx_corroborated("MIT", "Transmitted via secure channel.")
+    assert is_spdx_corroborated("MIT", "Licensed under MIT terms.")
+    assert is_spdx_corroborated("MIT", "SPDX-License-Identifier: MIT")
+
+    # "+" boundary check: "MIT" inside "MIT+" must NOT match
+    assert not is_spdx_corroborated("MIT", "Licensed under MIT+ terms.")
+    assert not is_spdx_corroborated("GPL-2.0", "Notice: GPL-2.0+ permitted.")
+    assert is_spdx_corroborated("MIT+", "Licensed under MIT+ terms.")
+
+    # "AFL-2.0" in extension like AFL-2.0.1 or AFL-2.0-custom must NOT match
+    assert not is_spdx_corroborated("AFL-2.0", "Notice: AFL-2.0.1 variant.")
+    assert not is_spdx_corroborated("AFL-2.0", "Derived from AFL-2.0-beta.")
+    assert is_spdx_corroborated("AFL-2.0", '"licenseId": "AFL-2.0"')
+
+    # DocMeta integration check
+    candidate_doc = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="False positive test.",
+        spdx_id="MIT",
+    )
+    result = merge_metadata(
+        [candidate_doc],
+        chunk_texts=["Commit message mentions nothing."],
+    )
+    assert result.spdx_id is None
+
+
+def test_merge_metadata_summary_is_not_concatenated():
+    """9. Summary is not concatenated."""
+    first = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="First chunk representative summary.",
+    )
+    second = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Second chunk independent summary.",
+    )
+    third = DocMeta(
+        doc_kind="license",
+        language="en",
+        summary="Third chunk independent summary.",
+    )
+
+    result = merge_metadata([first, second, third])
+
+    assert result.summary == "First chunk representative summary."
+    assert "Second chunk independent summary." not in result.summary
+    assert "Third chunk independent summary." not in result.summary
+
+
+def test_build_messages_with_and_without_structured_context():
+    from licenselens.llm.extract import build_messages
+
+    base_messages = build_messages("Prompt text", "Document body text")
+    assert base_messages == [
+        {"role": "system", "content": "Prompt text"},
+        {"role": "user", "content": "<document>\nDocument body text\n</document>"},
+    ]
+
+    context_messages = build_messages(
+        "Prompt text",
+        "Document body text",
+        structured_context={"licenseId": "AFL-2.0"},
+    )
+    assert context_messages[0] == {"role": "system", "content": "Prompt text"}
+    assert "Authoritative context:\n- licenseId: AFL-2.0" in context_messages[1]["content"]
+    assert "<document>\nDocument body text\n</document>" in context_messages[1]["content"]
 
 
 def test_merge_metadata_rejects_empty_results():

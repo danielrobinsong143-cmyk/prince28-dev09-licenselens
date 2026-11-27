@@ -1,6 +1,7 @@
 """Document metadata extraction and validation."""
 
 import json
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from typing import Any
@@ -92,10 +93,16 @@ async def extract_metadata(
     version: str,
     document_text: str,
     on_attempt: Callable[[LLMProviderAttempt], Awaitable[None]] | None = None,
+    *,
+    structured_context: dict[str, Any] | None = None,
 ) -> tuple[DocMeta, LLMResponse]:
     """Extract metadata and retry when JSON or schema validation fails."""
 
-    messages = build_messages(prompt, document_text)
+    messages = build_messages(
+        prompt,
+        document_text,
+        structured_context=structured_context,
+    )
     last_error: Exception | None = None
 
     last_truncation: LLMOutputTruncatedError | None = None
@@ -181,6 +188,8 @@ async def extract_metadata_from_chunks(
     on_attempt: Callable[[LLMProviderAttempt], Awaitable[None]] | None = None,
     *,
     max_chars: int = DEFAULT_EXTRACTION_CHUNK_CHARS,
+    structured_context: dict[str, Any] | None = None,
+    exact_spdx_id: str | None = None,
 ) -> tuple[DocMeta, LLMResponse]:
 
     chunks = build_extraction_chunks(document_text, max_chars=max_chars)
@@ -202,6 +211,7 @@ async def extract_metadata_from_chunks(
             version,
             chunk_text,
             on_attempt,
+            structured_context=structured_context,
         )
 
         results.append(metadata)
@@ -218,7 +228,10 @@ async def extract_metadata_from_chunks(
         latency_ms=total_latency_ms,
         fallback_used=fallback_used,
     )
-    return merge_metadata(results), aggregated_response
+    return (
+        merge_metadata(results, exact_spdx_id=exact_spdx_id, chunk_texts=chunks),
+        aggregated_response,
+    )
 
 
 def build_extraction_chunks(
@@ -254,13 +267,73 @@ def split_document_text(
     return [text[start : start + max_chars] for start in range(0, len(text), max_chars)]
 
 
-def merge_metadata(results: list[DocMeta]) -> DocMeta:
+def is_spdx_corroborated(candidate: str | None, text: str | None) -> bool:
+    """Check if an SPDX identifier candidate is explicitly present with identifier boundaries."""
+    if not candidate or not text:
+        return False
+    stripped = candidate.strip()
+    if not stripped:
+        return False
+    pattern = rf"(?<![a-zA-Z0-9.+-]){re.escape(stripped)}(?![a-zA-Z0-9.+-])"
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+
+def merge_metadata(
+    results: list[DocMeta],
+    *,
+    exact_spdx_id: str | None = None,
+    chunk_texts: list[str] | None = None,
+) -> DocMeta:
     """Merge metadata extracted from multiple document chunks."""
 
     if not results:
         raise ValueError("At least one metadata result is required")
 
     merged = results[0].model_dump()
+
+    # Deterministic summary selection: retain the first non-empty representative
+    # concise summary rather than concatenating summaries across chunks.
+    representative_summary = next(
+        (r.summary.strip() for r in results if r.summary and r.summary.strip()),
+        "",
+    )
+    merged["summary"] = representative_summary
+
+    # Final SPDX precedence:
+    # 1. exact_spdx_id supplied by a trusted caller is authoritative.
+    # 2. Otherwise, accept an SPDX identifier only when explicitly corroborated
+    #    by the corresponding source chunk text with proper boundary matching.
+    # 3. If multiple different identifiers are corroborated, return null rather
+    #    than choosing arbitrarily.
+    # 4. If candidates are not corroborated by source text, return null.
+    # 5. Do NOT accept unanimous model agreement without source-text evidence.
+    # 6. If no identifier exists, return null.
+    if exact_spdx_id is not None:
+        normalized_spdx_id = exact_spdx_id.strip()
+        if not normalized_spdx_id:
+            raise ValueError("exact_spdx_id must not be empty or whitespace-only.")
+        merged["spdx_id"] = normalized_spdx_id
+    else:
+        if chunk_texts is not None:
+            if len(chunk_texts) != len(results):
+                raise ValueError(
+                    f"chunk_texts length ({len(chunk_texts)}) "
+                    f"must match results length ({len(results)})."
+                )
+            paired = list(zip(results, chunk_texts, strict=True))
+        else:
+            paired = [(r, "") for r in results]
+
+        corroborated_ids = {
+            r.spdx_id.strip()
+            for r, text in paired
+            if r.spdx_id and is_spdx_corroborated(r.spdx_id, text)
+        }
+
+        if len(corroborated_ids) == 1:
+            merged["spdx_id"] = next(iter(corroborated_ids))
+        else:
+            merged["spdx_id"] = None
 
     list_fields = {
         "topics",
@@ -273,24 +346,39 @@ def merge_metadata(results: list[DocMeta]) -> DocMeta:
         data = result.model_dump()
 
         for key, value in data.items():
+            if key in {"summary", "spdx_id"}:
+                continue
+
             if key in list_fields:
                 merged[key] = list(dict.fromkeys(merged[key] + value))[:8]
 
             elif merged[key] is None and value is not None:
                 merged[key] = value
 
-            elif key == "summary" and value and value not in merged[key]:
-                merged[key] = f"{merged[key]} {value}"
-
     return DocMeta.model_validate(merged)
 
 
-def build_messages(prompt: str, document_text: str) -> list[dict[str, str]]:
+def build_messages(
+    prompt: str,
+    document_text: str,
+    *,
+    structured_context: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
     """Combine extraction instructions with the source document."""
+    context_prefix = ""
+    if structured_context:
+        items = "\n".join(
+            f"- {key}: {value}"
+            for key, value in structured_context.items()
+            if value is not None and str(value).strip()
+        )
+        if items:
+            context_prefix = f"Authoritative context:\n{items}\n\n"
+
     return [
         {"role": "system", "content": prompt},
         {
             "role": "user",
-            "content": (f"<document>\n{document_text.strip()}\n</document>"),
+            "content": f"{context_prefix}<document>\n{document_text.strip()}\n</document>",
         },
     ]
