@@ -279,25 +279,41 @@ def test_provider_configuration():
 async def test_circuit_opens_after_three_failures():
     breaker = CircuitBreaker(failure_threshold=3)
 
-    assert await breaker.allow_request() is True
+    allowed, token = await breaker.acquire_request()
+    assert allowed is True
+    assert token is None
 
     await breaker.record_failure()
     await breaker.record_failure()
     await breaker.record_failure()
 
-    assert await breaker.allow_request() is False
+    allowed, token = await breaker.acquire_request()
+    assert allowed is False
+    assert token is None
 
 
 @pytest.mark.asyncio
-async def test_circuit_closes_after_success():
-    breaker = CircuitBreaker(failure_threshold=1)
+async def test_circuit_closes_after_success(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    breaker = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
 
     await breaker.record_failure()
-    assert await breaker.allow_request() is False
+    allowed, token = await breaker.acquire_request()
+    assert allowed is False
+    assert token is None
 
-    await breaker.record_success()
+    current_time += 31.0
+    allowed, token = await breaker.acquire_request()
+    assert allowed is True
+    assert token is not None
 
-    assert await breaker.allow_request() is True
+    await breaker.record_success(token)
+
+    allowed, token = await breaker.acquire_request()
+    assert allowed is True
+    assert token is None
 
 
 @pytest.mark.asyncio
@@ -310,8 +326,13 @@ async def test_circuit_allows_one_probe_after_recovery():
     await breaker.record_failure()
     await asyncio.sleep(0.02)
 
-    assert await breaker.allow_request() is True
-    assert await breaker.allow_request() is False
+    allowed1, token1 = await breaker.acquire_request()
+    assert allowed1 is True
+    assert token1 is not None
+
+    allowed2, token2 = await breaker.acquire_request()
+    assert allowed2 is False
+    assert token2 is None
 
 
 def test_calculate_cost_inr():
@@ -965,6 +986,37 @@ async def test_provider_falls_back_when_retry_after_exceeds_wait_limit(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_groq_429_exceeding_15s_raises_rate_limited_without_sleeping(monkeypatch):
+    from licenselens.llm import gateway as gateway_module
+
+    delays = []
+
+    def handler(request):
+        return httpx.Response(429, headers={"Retry-After": "56"}, text="rate limited")
+
+    async def capture_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(gateway_module.asyncio, "sleep", capture_sleep)
+    provider = OpenAICompatProvider(
+        name="groq",
+        base_url="https://example.com/v1",
+        api_key="test-key",  # pragma: allowlist secret
+        model="test-model",
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(ProviderRateLimitedError):
+            await provider._complete_with_retry(
+                client,
+                [{"role": "user", "content": "Test"}],
+                0.0,
+            )
+
+    # 56 seconds exceeds MAX_RETRY_WAIT_SECONDS (15s); must NOT sleep
+    assert delays == []
+
+
+@pytest.mark.asyncio
 async def test_provider_paces_each_request_at_configured_rate(monkeypatch):
     from licenselens.llm import gateway as gateway_module
 
@@ -1220,3 +1272,642 @@ async def test_stream_fallback_circuit_cools_down_and_recovers():
 
     assert chunks == ["recovered"]
     assert fallback.calls == 2
+
+
+def test_create_gateway_with_worker_overrides_configures_both_providers():
+    from licenselens.config import Settings
+    from licenselens.llm.gateway import create_gateway
+
+    settings = Settings(
+        app_env="ci",
+        database_url="postgresql+asyncpg://localhost:5432/testdb",
+        llm_timeout_seconds=30.0,
+        _env_file=None,
+    )
+    gw = create_gateway(settings, timeout=12.0, max_retries=0)
+    assert gw.primary.timeout == 12.0
+    assert gw.primary.max_retries == 0
+    assert gw.fallback.timeout == 12.0
+    assert gw.fallback.max_retries == 0
+
+
+def test_create_gateway_default_retains_settings_and_defaults():
+    from licenselens.config import Settings
+    from licenselens.llm.gateway import create_gateway
+
+    settings = Settings(
+        app_env="ci",
+        database_url="postgresql+asyncpg://localhost:5432/testdb",
+        llm_timeout_seconds=30.0,
+        _env_file=None,
+    )
+    gw = create_gateway(settings)
+    assert gw.primary.timeout == 30.0
+    assert gw.primary.max_retries is None
+    assert gw.fallback.timeout == 30.0
+    assert gw.fallback.max_retries is None
+
+
+@pytest.mark.asyncio
+async def test_provider_with_max_retries_zero_makes_only_one_attempt_on_503(monkeypatch):
+    from licenselens.llm import gateway as gateway_module
+
+    delays = []
+    calls = 0
+
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(503, text="service unavailable")
+
+    async def capture_sleep(delay):
+        delays.append(delay)
+
+    monkeypatch.setattr(gateway_module.asyncio, "sleep", capture_sleep)
+    provider = OpenAICompatProvider(
+        name="gemini",
+        base_url="https://example.com/v1",
+        api_key="test-key",  # pragma: allowlist secret
+        model="test-model",
+        max_retries=0,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        with pytest.raises(httpx.HTTPStatusError):
+            await provider._complete_with_retry(
+                client,
+                [{"role": "user", "content": "Test"}],
+                0.0,
+                None,
+                max_retries=provider.max_retries,
+            )
+
+    assert calls == 1
+    assert delays == []
+
+
+@pytest.mark.asyncio
+async def test_gateway_switches_to_fallback_immediately_when_max_retries_zero():
+    primary_calls = 0
+    fallback_calls = 0
+
+    def primary_handler(request):
+        nonlocal primary_calls
+        primary_calls += 1
+        return httpx.Response(503, text="service unavailable")
+
+    def fallback_handler(request):
+        nonlocal fallback_calls
+        fallback_calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5},
+            },
+        )
+
+    primary = OpenAICompatProvider(
+        name="groq",
+        base_url="https://example.com/groq",
+        api_key="test-key",  # pragma: allowlist secret
+        model="test-model",
+        max_retries=0,
+    )
+    fallback = OpenAICompatProvider(
+        name="gemini",
+        base_url="https://example.com/gemini",
+        api_key="test-key",  # pragma: allowlist secret
+        model="test-model",
+        max_retries=0,
+    )
+
+    async with (
+        httpx.AsyncClient(transport=httpx.MockTransport(primary_handler)) as primary_client,
+        httpx.AsyncClient(transport=httpx.MockTransport(fallback_handler)) as fallback_client,
+    ):
+
+        async def mock_primary_complete(messages, temp=0.2, response_format=None):
+            data = await primary._complete_with_retry(
+                primary_client,
+                messages,
+                temp,
+                response_format,
+                max_retries=primary.max_retries,
+            )
+            return LLMResponse(
+                content=data["choices"][0]["message"]["content"],
+                provider=primary.name,
+                model=primary.model,
+                tokens_in=10,
+                tokens_out=5,
+                latency_ms=100,
+            )
+
+        async def mock_fallback_complete(messages, temp=0.2, response_format=None):
+            data = await fallback._complete_with_retry(
+                fallback_client,
+                messages,
+                temp,
+                response_format,
+                max_retries=fallback.max_retries,
+            )
+            return LLMResponse(
+                content=data["choices"][0]["message"]["content"],
+                provider=fallback.name,
+                model=fallback.model,
+                tokens_in=10,
+                tokens_out=5,
+                latency_ms=100,
+            )
+
+        primary.complete = mock_primary_complete
+        fallback.complete = mock_fallback_complete
+
+        gw = LLMGateway(primary=primary, fallback=fallback)
+        resp = await gw.complete([{"role": "user", "content": "hi"}])
+        assert resp.content == "ok"
+        assert resp.fallback_used is True
+        assert primary_calls == 1
+        assert fallback_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_provider_recovers_after_cooldown_complete():
+    class RecoveringProvider:
+        name = "groq"
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def complete(self, messages, temperature=0.2, response_format=None):
+            self.calls += 1
+            if self.calls == 1:
+                req = httpx.Request("POST", "https://api.groq.com")
+                resp = httpx.Response(429, request=req, headers={"retry-after": "1"})
+                raise ProviderRateLimitedError(
+                    "rate limited", request=req, response=resp, retry_after=0.1
+                )
+            return LLMResponse(
+                content="recovered",
+                provider=self.name,
+                model=self.model,
+                tokens_in=5,
+                tokens_out=5,
+                latency_ms=10,
+            )
+
+    provider = RecoveringProvider()
+    gw = LLMGateway(primary=provider)
+
+    with pytest.raises(ProviderRateLimitedError):
+        await gw.complete([])
+
+    with pytest.raises(CircuitOpenError, match="unavailable"):
+        await gw.complete([])
+    assert provider.calls == 1
+
+    # math.ceil(0.1) == 1.0s cooldown
+    await asyncio.sleep(1.05)
+    response = await gw.complete([])
+    assert response.content == "recovered"
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_rate_limited_provider_recovers_after_cooldown_stream():
+    class RecoveringStreamProvider:
+        name = "groq"
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def stream(self, messages, temperature=0.2):
+            self.calls += 1
+            if self.calls == 1:
+                req = httpx.Request("POST", "https://api.groq.com")
+                resp = httpx.Response(429, request=req, headers={"retry-after": "1"})
+                raise ProviderRateLimitedError(
+                    "rate limited", request=req, response=resp, retry_after=0.1
+                )
+            yield "stream-recovered"
+
+    provider = RecoveringStreamProvider()
+    gw = LLMGateway(primary=provider)
+
+    with pytest.raises(ProviderRateLimitedError):
+        async for _ in gw.stream([]):
+            pass
+
+    with pytest.raises(CircuitOpenError, match="no fallback is configured"):
+        async for _ in gw.stream([]):
+            pass
+    assert provider.calls == 1
+
+    # math.ceil(0.1) == 1.0s cooldown
+    await asyncio.sleep(1.05)
+    chunks = [item async for item in gw.stream([])]
+    assert chunks == ["stream-recovered"]
+    assert provider.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_quota_exhaustion_does_not_recover_after_cooldown():
+    class QuotaProvider:
+        name = "groq"
+        model = "test-model"
+
+        def __init__(self):
+            self.calls = 0
+
+        async def complete(self, messages, temperature=0.2, response_format=None):
+            self.calls += 1
+            if self.calls == 1:
+                req = httpx.Request("POST", "https://api.groq.com")
+                resp = httpx.Response(429, request=req, text="daily quota exceeded")
+                raise ProviderQuotaExhaustedError("quota exhausted", request=req, response=resp)
+            return LLMResponse(
+                content="should not reach",
+                provider=self.name,
+                model=self.model,
+                tokens_in=0,
+                tokens_out=0,
+                latency_ms=0,
+            )
+
+    provider = QuotaProvider()
+    gw = LLMGateway(primary=provider)
+
+    with pytest.raises(ProviderQuotaExhaustedError):
+        await gw.complete([])
+
+    assert provider.calls == 1
+
+    await asyncio.sleep(0.05)
+    with pytest.raises(CircuitOpenError, match="unavailable"):
+        await gw.complete([])
+    assert provider.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_rate_limits_preserve_longest_cooldown():
+    import time
+
+    gw = LLMGateway(primary=FakeLLM())
+    req = httpx.Request("POST", "https://api.groq.com")
+    resp = httpx.Response(429, request=req)
+
+    exc_short = ProviderRateLimitedError("short", request=req, response=resp, retry_after=5.0)
+    exc_long = ProviderRateLimitedError("long", request=req, response=resp, retry_after=20.0)
+
+    await asyncio.gather(
+        gw.record_provider_failure("groq", exc_short),
+        gw.record_provider_failure("groq", exc_long),
+    )
+
+    remaining = gw._rate_limited_until["groq"] - time.monotonic()
+    assert remaining >= 19.0
+
+
+@pytest.mark.asyncio
+async def test_half_open_allows_only_one_concurrent_probe():
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=0.02)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    await asyncio.sleep(0.03)
+    results = await asyncio.gather(
+        cb.acquire_request(),
+        cb.acquire_request(),
+        cb.acquire_request(),
+        cb.acquire_request(),
+    )
+    allowed_list = [r[0] for r in results]
+    tokens = [r[1] for r in results if r[0] is True]
+    assert allowed_list.count(True) == 1
+    assert allowed_list.count(False) == 3
+    assert len(tokens) == 1
+    assert tokens[0] is not None
+
+
+@pytest.mark.asyncio
+async def test_probe_success_closes_circuit(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    current_time += 31.0
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+    await cb.record_success(token)
+    assert cb.is_open is False
+    assert cb.opened_at is None
+    assert cb._active_probe_token is None
+    assert cb.failure_count == 0
+
+    allowed, next_token = await cb.acquire_request()
+    assert allowed is True
+    assert next_token is None
+
+
+@pytest.mark.asyncio
+async def test_probe_failure_reopens_circuit(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    current_time += 31.0
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+    await cb.record_failure(token)
+    assert cb.is_open is True
+    assert cb.opened_at is not None
+    assert cb._active_probe_token is None
+    assert cb.failure_count == 2
+
+    allowed, next_token = await cb.acquire_request()
+    assert allowed is False
+    assert next_token is None
+
+
+@pytest.mark.asyncio
+async def test_probe_cancellation_safely_releases_ownership(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    current_time += 31.0
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+    allowed2, token2 = await cb.acquire_request()
+    assert allowed2 is False
+    assert token2 is None
+
+    await cb.reset_probe(token)
+    assert cb._active_probe_token is None
+
+    allowed3, token3 = await cb.acquire_request()
+    assert allowed3 is True
+    assert token3 is not None
+    assert token3 != token
+
+
+@pytest.mark.asyncio
+async def test_cancellation_of_non_probe_request_does_not_reset_active_probe(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    current_time += 31.0
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+    await cb.reset_probe(None)
+    assert cb._active_probe_token == token
+
+    await cb.reset_probe(99999)
+    assert cb._active_probe_token == token
+
+
+@pytest.mark.asyncio
+async def test_stale_probe_result_does_not_affect_newer_probe(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+
+    current_time += 31.0
+    allowed1, token1 = await cb.acquire_request()
+    assert allowed1 is True
+    assert token1 is not None
+
+    await cb.reset_probe(token1)
+    allowed2, token2 = await cb.acquire_request()
+    assert allowed2 is True
+    assert token2 is not None
+    assert token2 != token1
+
+    await cb.record_failure(token1)
+    assert cb._active_probe_token == token2
+    assert cb.failure_count == 1
+
+    await cb.record_success(token1)
+    assert cb._active_probe_token == token2
+    assert cb.opened_at is not None
+
+    await cb.record_success(token2)
+    assert cb.opened_at is None
+    assert cb._active_probe_token is None
+    assert cb.failure_count == 0
+
+
+@pytest.mark.asyncio
+async def test_open_and_closed_circuit_state_validation():
+    cb = CircuitBreaker(failure_threshold=2)
+
+    await cb.record_failure(probe_token=1)
+    assert cb.failure_count == 0
+    await cb.record_failure(None)
+    assert cb.failure_count == 1
+
+    await cb.record_success(probe_token=1)
+    assert cb.failure_count == 1
+    await cb.record_success(None)
+    assert cb.failure_count == 0
+
+    await cb.record_failure(None)
+    await cb.record_failure(None)
+    assert cb.is_open is True
+    assert cb._active_probe_token is None
+
+    await cb.record_success(None)
+    assert cb.is_open is True
+    await cb.record_success(1)
+    assert cb.is_open is True
+    await cb.record_failure(None)
+    assert cb.failure_count == 2
+    await cb.record_failure(1)
+    assert cb.failure_count == 2
+
+
+class ProbeCancellingProvider:
+    name = "cancelling"
+    model = "test-model"
+
+    async def complete(self, messages, temperature=0.2, response_format=None):
+        raise asyncio.CancelledError()
+
+    async def stream(self, messages, temperature=0.2):
+        if False:
+            yield "never"
+        raise asyncio.CancelledError()
+
+
+@pytest.mark.asyncio
+async def test_gateway_complete_probe_cancellation_releases_token(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+    current_time += 31.0
+
+    gw = LLMGateway(primary=ProbeCancellingProvider(), circuit_breaker=cb)
+    messages = [{"role": "user", "content": "hi"}]
+
+    with pytest.raises(asyncio.CancelledError):
+        await gw.complete(messages)
+
+    assert cb._active_probe_token is None
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+
+@pytest.mark.asyncio
+async def test_gateway_complete_fallback_probe_cancellation_releases_token(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    class FailingPrimary:
+        name = "groq"
+        model = "test-model"
+
+        async def complete(self, messages, temperature=0.2, response_format=None):
+            req = httpx.Request("POST", "https://api.groq.com")
+            resp = httpx.Response(500, request=req)
+            raise httpx.HTTPStatusError("500", request=req, response=resp)
+
+    fallback_cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await fallback_cb.record_failure()
+    assert fallback_cb.is_open is True
+    current_time += 31.0
+
+    gw = LLMGateway(
+        primary=FailingPrimary(),
+        fallback=ProbeCancellingProvider(),
+        fallback_circuit_breaker=fallback_cb,
+    )
+    messages = [{"role": "user", "content": "hi"}]
+
+    with pytest.raises(asyncio.CancelledError):
+        await gw.complete(messages)
+
+    assert fallback_cb._active_probe_token is None
+    allowed, token = await fallback_cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+
+@pytest.mark.asyncio
+async def test_gateway_stream_probe_cancellation_releases_token(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await cb.record_failure()
+    assert cb.is_open is True
+    current_time += 31.0
+
+    gw = LLMGateway(primary=ProbeCancellingProvider(), circuit_breaker=cb)
+    messages = [{"role": "user", "content": "hi"}]
+
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in gw.stream(messages):
+            pass
+
+    assert cb._active_probe_token is None
+    allowed, token = await cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+
+@pytest.mark.asyncio
+async def test_gateway_stream_fallback_probe_cancellation_releases_token(monkeypatch):
+    current_time = 1000.0
+    monkeypatch.setattr("licenselens.llm.gateway.time.monotonic", lambda: current_time)
+
+    fallback_cb = CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
+    await fallback_cb.record_failure()
+    assert fallback_cb.is_open is True
+    current_time += 31.0
+
+    primary_cb = CircuitBreaker(failure_threshold=1)
+    await primary_cb.record_failure()
+
+    gw = LLMGateway(
+        primary=FakeLLM(),
+        fallback=ProbeCancellingProvider(),
+        circuit_breaker=primary_cb,
+        fallback_circuit_breaker=fallback_cb,
+    )
+    messages = [{"role": "user", "content": "hi"}]
+
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in gw.stream(messages):
+            pass
+
+    assert fallback_cb._active_probe_token is None
+    allowed, token = await fallback_cb.acquire_request()
+    assert allowed is True
+    assert token is not None
+
+
+@pytest.mark.asyncio
+async def test_provider_failure_logs_sanitized_details(caplog):
+    import logging
+
+    class SanitizedProvider:
+        name = "groq"
+        model = "test-model"
+        api_key = "secret-groq-key"  # pragma: allowlist secret
+
+        async def complete(self, messages, temperature=0.2, response_format=None):
+            req = httpx.Request(
+                "POST", "https://api.groq.com", headers={"Authorization": "Bearer secret-groq-key"}
+            )
+            resp = httpx.Response(
+                503,
+                request=req,
+                json={
+                    "error": {
+                        "message": "Service unavailable for prompt content secret-groq-key",
+                        "code": "overloaded",
+                    }
+                },
+            )
+            raise httpx.HTTPStatusError("503 Service Unavailable", request=req, response=resp)
+
+    gw = LLMGateway(primary=SanitizedProvider())
+    messages = [{"role": "user", "content": "secret-prompt-passphrase"}]
+    with caplog.at_level(logging.WARNING), pytest.raises(httpx.HTTPStatusError):
+        await gw.complete(messages)
+
+    log_text = caplog.text
+    assert "secret-groq-key" not in log_text
+    assert "Bearer secret-groq-key" not in log_text
+    assert "Primary provider groq failed" in log_text
+    assert "overloaded" in log_text
