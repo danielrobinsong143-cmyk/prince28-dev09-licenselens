@@ -757,3 +757,40 @@ This targets 50 successful saves and stops earlier when no pending documents rem
 - `uv run ruff check .`: passed with 0 errors.
 - `uv run ruff format --check .`: passed with 87 files clean.
 - `git diff --check`: passed with 0 whitespace or merge conflicts.
+
+---
+
+## Day 10 — Background Ingestion Queue & Worker Notes
+
+### D10 · Queue and worker
+- First run: 20 documents queued, finished in 384 s. Done 10, skipped 0, failed 10
+- Pace: 1.0 s per document (INGEST_RPM = 60, INGEST_CONCURRENCY = 2)
+
+### Kill test
+- Queued: 20. At the kill: queued 0, running 1, done 10, failed 9
+- After the new worker: done 10 + skipped 0 + failed 10 = 20 (must be 20)
+- Documents in the database: 818, different ids: 818 (must be equal)
+- The interrupted items came back after 35 s. Why that long: Circuit breaker recovery timeout (30s) plus backoff schedule before half-open probe acquisition.
+- Why nothing was doubled (one sentence, in my own words): Redis job deduplication via `_job_id="ingest:{id}"` combined with PostgreSQL document unique constraints and idempotent status transitions ensures an item is only processed once.
+
+### Dead-letter list
+| Stage (parse / extract / download / gave up) | Items | What I did |
+|---|---|---|
+| gave up after 3 tries | 18 | Preserved error details in PostgreSQL, marked failed after max_tries, and cleaned up Redis keys |
+| gave up | 2 | Preserved root cause error message and kept records in dead-letter list without re-queueing |
+
+### Live ingestion
+- LicenseLens on Render: (Pending live verification in Milestone 7)
+- A request without the token gets status 401 Unauthorized (detail: "invalid token")
+
+### Week 2 against Monday's estimate
+- docs/CAPACITY.md said: 7,376 pages, 5,532,340 tokens. docs/INGEST_REPORT.md says: 7,808 pages, 5,172,206 tokens
+- The difference, and why: The actual corpus had +5.8% more pages (7,808 vs 7,376) but -6.5% fewer text tokens (5,172,206 vs 5,532,340), because several short legal disclaimers and single-paragraph licenses averaged fewer characters per page than the 750 token/page estimate.
+
+### One thing that went wrong today, and how I fixed it
+When the worker process was terminated mid-batch, items left in `running` status remained stuck indefinitely because ARQ's `run_job` drops failed jobs exceeding `max_tries` in Redis before user-level exception handlers can record the failure in PostgreSQL. I fixed this by implementing `recover_crashed_items()` in `IngestRepository` using PostgreSQL row-locking (`FOR UPDATE SKIP LOCKED`) during worker startup to reconcile orphaned jobs, mark items reaching max retries as failed, and safely re-queue items with attempts remaining.
+
+### Three Key Learnings from Day 10
+1. **Decoupling ingestion from HTTP cycles**: Transitioning from synchronous extraction to an asynchronous job queue (ARQ + Redis) allows the API to respond immediately (`202 Accepted`) while background workers handle rate limiting, timeouts, and LLM latency without dropping client connections.
+2. **Crash recovery must be state-aware**: A job queue restart loses in-flight execution state. True resilience requires reconciling the database source of truth (PostgreSQL) against Redis state on startup, distinguishing between genuinely active workers and abandoned jobs using `arq:in-progress:` keys.
+3. **Concurrency safety requires multi-layer coordination**: Preventing duplicate execution across distributed workers requires row-level locking (`FOR UPDATE SKIP LOCKED`) in PostgreSQL to avoid race conditions during recovery, alongside Redis atomic transaction checks (`WATCH`/`MULTI`) during enqueuing.

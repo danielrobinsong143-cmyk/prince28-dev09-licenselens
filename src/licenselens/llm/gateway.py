@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import math
 import re
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -73,7 +74,7 @@ class RequestPacer:
 
 RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
 MAX_RETRIES = 2
-MAX_RETRY_WAIT_SECONDS = 60.0
+MAX_RETRY_WAIT_SECONDS = 15.0
 
 
 def _safe_provider_error_details(
@@ -208,6 +209,17 @@ class ProviderQuotaExhaustedError(httpx.HTTPStatusError):
 
 class ProviderRateLimitedError(httpx.HTTPStatusError):
     """A provider remains rate-limited after retries or has a long reset window."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        request: httpx.Request,
+        response: httpx.Response,
+        retry_after: float | None = None,
+    ) -> None:
+        super().__init__(message, request=request, response=response)
+        self.retry_after = retry_after
 
 
 class ProviderBadRequestError(httpx.HTTPStatusError):
@@ -377,6 +389,7 @@ class OpenAICompatProvider:
         requests_per_minute: float | None = None,
         max_tokens: int | None = None,
         request_pacer: RequestPacer | None = None,
+        max_retries: int | None = None,
     ) -> None:
         if requests_per_minute is not None and requests_per_minute <= 0:
             raise ValueError("requests_per_minute must be greater than zero")
@@ -390,6 +403,7 @@ class OpenAICompatProvider:
         self.timeout = timeout
         self.max_tokens = max_tokens
         self.request_pacer = request_pacer
+        self.max_retries = max_retries
         self.request_interval = (
             60 / requests_per_minute if requests_per_minute is not None else None
         )
@@ -525,29 +539,51 @@ class OpenAICompatProvider:
                 if status not in RETRYABLE_STATUS_CODES:
                     raise
 
+                delay: float
+                if status == 429:
+                    raw_delay = retry_after_seconds(exc.response.headers)
+                    delay = float(math.ceil(raw_delay)) if raw_delay is not None else 60.0
+                else:
+                    delay = float(2**attempt)
+
                 if attempt == retry_limit:
+                    safe = _safe_provider_error_details(
+                        exc.response,
+                        api_key=self.api_key,
+                        messages=messages,
+                    )
+                    logger.warning(
+                        "provider_http_failure provider=%s request=%d/%d status=%d "
+                        "error_type=%s code=%s message=%s",
+                        self.name,
+                        attempt + 1,
+                        retry_limit + 1,
+                        status,
+                        type(exc).__name__,
+                        safe.get("code"),
+                        safe.get("message"),
+                    )
                     if status == 429:
                         raise ProviderRateLimitedError(
-                            str(exc), request=exc.request, response=exc.response
+                            str(exc),
+                            request=exc.request,
+                            response=exc.response,
+                            retry_after=delay,
                         ) from exc
                     raise
 
-                if status == 429:
-                    delay = retry_after_seconds(exc.response.headers)
-                    if delay is None:
-                        # A minute is the documented window for TPM/RPM limits.
-                        delay = 60.0
-                    if delay > MAX_RETRY_WAIT_SECONDS:
-                        logger.warning(
-                            "%s rate-limit reset is %.1f seconds away; falling back",
-                            self.name,
-                            delay,
-                        )
-                        raise ProviderRateLimitedError(
-                            str(exc), request=exc.request, response=exc.response
-                        ) from exc
-                else:
-                    delay = 2**attempt
+                if status == 429 and delay > MAX_RETRY_WAIT_SECONDS:
+                    logger.warning(
+                        "%s rate-limit reset is %.1f seconds away; falling back",
+                        self.name,
+                        delay,
+                    )
+                    raise ProviderRateLimitedError(
+                        str(exc),
+                        request=exc.request,
+                        response=exc.response,
+                        retry_after=delay,
+                    ) from exc
 
                 logger.warning(
                     "%s returned HTTP %s. Retrying in %s seconds.",
@@ -624,6 +660,7 @@ class OpenAICompatProvider:
                 messages,
                 temperature,
                 effective_response_format,
+                max_retries=self.max_retries,
             )
 
         usage = data.get("usage", {})
@@ -720,7 +757,8 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self.failure_count = 0
         self.opened_at: float | None = None
-        self.half_open_probe = False
+        self._probe_generation: int = 0
+        self._active_probe_token: int | None = None
         self.lock = asyncio.Lock()
 
     @property
@@ -729,43 +767,83 @@ class CircuitBreaker:
             self.opened_at is not None and time.monotonic() - self.opened_at < self.recovery_timeout
         )
 
-    async def allow_request(self) -> bool:
+    async def acquire_request(self) -> tuple[bool, int | None]:
         async with self.lock:
-            # CLOSED: provider is allowed to receive requests.
+            # CLOSED: provider is allowed to receive requests (no probe token needed).
             if self.opened_at is None:
-                return True
+                return True, None
 
             # OPEN: recovery period has not elapsed.
             if time.monotonic() - self.opened_at < self.recovery_timeout:
-                return False
+                return False, None
 
-            # HALF-OPEN: allow only one recovery probe.
-            if self.half_open_probe:
-                return False
+            # HALF-OPEN: allow only one recovery probe with a unique token.
+            if self._active_probe_token is not None:
+                return False, None
 
-            self.half_open_probe = True
-            return True
+            self._probe_generation += 1
+            self._active_probe_token = self._probe_generation
+            return True, self._active_probe_token
 
-    async def record_success(self) -> None:
+    async def reset_probe(self, probe_token: int | None) -> None:
+        if probe_token is None:
+            return
         async with self.lock:
-            self.failure_count = 0
-            self.opened_at = None
-            self.half_open_probe = False
+            if self._active_probe_token == probe_token:
+                self._active_probe_token = None
 
-            logger.info("Circuit breaker closed after successful request.")
-
-    async def record_failure(self) -> None:
+    async def record_success(self, probe_token: int | None = None) -> None:
         async with self.lock:
-            self.failure_count += 1
-            self.half_open_probe = False
+            if self.opened_at is None:
+                # CLOSED: accept ordinary results only when probe_token is None.
+                if probe_token is not None:
+                    return
+                self.failure_count = 0
+                return
 
-            if self.failure_count >= self.failure_threshold:
+            if self._active_probe_token is not None:
+                # HALF-OPEN: accept only when supplied token matches active probe token.
+                if probe_token != self._active_probe_token:
+                    return
+                self.failure_count = 0
+                self.opened_at = None
+                self._active_probe_token = None
+                logger.info("Circuit breaker closed after successful recovery probe.")
+                return
+
+            # OPEN: ignore all results.
+            return
+
+    async def record_failure(self, probe_token: int | None = None) -> None:
+        async with self.lock:
+            if self.opened_at is None:
+                # CLOSED: accept ordinary results only when probe_token is None.
+                if probe_token is not None:
+                    return
+                self.failure_count += 1
+                if self.failure_count >= self.failure_threshold:
+                    self.opened_at = time.monotonic()
+                    logger.warning(
+                        "Circuit breaker opened after %s failures.",
+                        self.failure_count,
+                    )
+                return
+
+            if self._active_probe_token is not None:
+                # HALF-OPEN: accept only when supplied token matches active probe token.
+                if probe_token != self._active_probe_token:
+                    return
+                self.failure_count += 1
                 self.opened_at = time.monotonic()
-
+                self._active_probe_token = None
                 logger.warning(
-                    "Circuit breaker opened after %s failures.",
+                    "Circuit breaker reopened after failed recovery probe (failures=%s).",
                     self.failure_count,
                 )
+                return
+
+            # OPEN: ignore all results.
+            return
 
 
 class LLMGateway:
@@ -782,20 +860,58 @@ class LLMGateway:
         self.fallback = fallback
         self.circuit_breaker = circuit_breaker or CircuitBreaker()
         self.fallback_circuit_breaker = fallback_circuit_breaker or CircuitBreaker()
-        self._unavailable_providers: set[str] = set()
+        self._quota_exhausted_providers: set[str] = set()
+        self._rate_limited_until: dict[str, float] = {}
+        self._state_lock = asyncio.Lock()
+
+    @property
+    def _unavailable_providers(self) -> set[str]:
+        now = time.monotonic()
+        active = {name for name, until in self._rate_limited_until.items() if until > now}
+        return self._quota_exhausted_providers | active
 
     @property
     def all_providers_unavailable(self) -> bool:
         """Whether both configured providers are known to be unavailable for this run."""
+        now = time.monotonic()
+        primary_name = getattr(self.primary, "name", "")
+        fallback_name = getattr(self.fallback, "name", "")
         primary_unavailable = (
-            getattr(self.primary, "name", "") in self._unavailable_providers
+            primary_name in self._quota_exhausted_providers
+            or (self._rate_limited_until.get(primary_name, 0.0) > now)
             or self.circuit_breaker.is_open
         )
         fallback_unavailable = self.fallback is None or (
-            getattr(self.fallback, "name", "") in self._unavailable_providers
+            fallback_name in self._quota_exhausted_providers
+            or (self._rate_limited_until.get(fallback_name, 0.0) > now)
             or self.fallback_circuit_breaker.is_open
         )
         return primary_unavailable and fallback_unavailable
+
+    async def is_provider_blocked(self, provider_name: str) -> bool:
+        async with self._state_lock:
+            if provider_name in self._quota_exhausted_providers:
+                return True
+            until = self._rate_limited_until.get(provider_name)
+            if until is not None:
+                if time.monotonic() < until:
+                    return True
+                self._rate_limited_until.pop(provider_name, None)
+            return False
+
+    async def record_provider_failure(self, provider_name: str, exc: Exception) -> None:
+        if isinstance(exc, ProviderQuotaExhaustedError):
+            async with self._state_lock:
+                self._quota_exhausted_providers.add(provider_name)
+        elif isinstance(exc, ProviderRateLimitedError):
+            delay = getattr(exc, "retry_after", None)
+            if delay is None:
+                delay = 60.0
+            delay = float(math.ceil(delay))
+            async with self._state_lock:
+                current_until = self._rate_limited_until.get(provider_name, 0.0)
+                new_until = time.monotonic() + delay
+                self._rate_limited_until[provider_name] = max(current_until, new_until)
 
     async def complete(
         self,
@@ -844,7 +960,7 @@ class LLMGateway:
 
         async def call_provider(provider: LLMProvider) -> LLMResponse:
             provider_name = getattr(provider, "name", "")
-            if provider_name in self._unavailable_providers:
+            if await self.is_provider_blocked(provider_name):
                 raise CircuitOpenError(f"{provider_name} is unavailable for this run")
 
             if response_format is None:
@@ -860,31 +976,58 @@ class LLMGateway:
             if self.fallback is None:
                 raise CircuitOpenError("No fallback provider is configured")
             fallback_name = getattr(self.fallback, "name", "")
-            if fallback_name in self._unavailable_providers:
+            if await self.is_provider_blocked(fallback_name):
                 raise CircuitOpenError(f"{fallback_name} is unavailable for this run")
-            if not await self.fallback_circuit_breaker.allow_request():
+            fallback_allowed, fallback_token = await self.fallback_circuit_breaker.acquire_request()
+            if not fallback_allowed:
                 raise CircuitOpenError(f"{fallback_name} circuit is open")
 
             try:
                 response = await call_provider(self.fallback)
+            except asyncio.CancelledError:
+                await self.fallback_circuit_breaker.reset_probe(fallback_token)
+                raise
             except Exception as exc:
                 if isinstance(exc, (ProviderQuotaExhaustedError, ProviderRateLimitedError)):
-                    self._unavailable_providers.add(fallback_name)
+                    await self.record_provider_failure(fallback_name, exc)
                 elif is_temporary_provider_error(exc):
-                    await self.fallback_circuit_breaker.record_failure()
+                    await self.fallback_circuit_breaker.record_failure(fallback_token)
+
+                safe = (
+                    _safe_provider_error_details(
+                        exc.response,
+                        api_key=getattr(self.fallback, "api_key", ""),
+                        messages=messages,
+                    )
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else {}
+                )
+                logger.warning(
+                    "Fallback provider %s failed with %s (status=%s, code=%s, message=%s)",
+                    fallback_name,
+                    type(exc).__name__,
+                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None,
+                    safe.get("code"),
+                    safe.get("message"),
+                    exc_info=True,
+                )
                 await report(self.fallback, "error", error=str(exc), fallback_used=True)
                 raise
 
-            await self.fallback_circuit_breaker.record_success()
+            await self.fallback_circuit_breaker.record_success(fallback_token)
             response = replace(response, fallback_used=True)
             await report(self.fallback, "ok", result=response, fallback_used=True)
             return response
 
         primary_name = getattr(self.primary, "name", "")
-        if (
-            primary_name in self._unavailable_providers
-            or not await self.circuit_breaker.allow_request()
-        ):
+        if await self.is_provider_blocked(primary_name):
+            logger.warning("Primary provider is unavailable. Using fallback.")
+            if self.fallback is None:
+                raise CircuitOpenError("Primary provider unavailable and no fallback is configured")
+            return await use_fallback()
+
+        primary_allowed, primary_token = await self.circuit_breaker.acquire_request()
+        if not primary_allowed:
             logger.warning("Primary provider is unavailable. Using fallback.")
             if self.fallback is None:
                 raise CircuitOpenError("Primary provider unavailable and no fallback is configured")
@@ -892,21 +1035,38 @@ class LLMGateway:
 
         try:
             response = await call_provider(self.primary)
-
+        except asyncio.CancelledError:
+            await self.circuit_breaker.reset_probe(primary_token)
+            raise
         except httpx.HTTPError as exc:
+            safe = (
+                _safe_provider_error_details(
+                    exc.response,
+                    api_key=getattr(self.primary, "api_key", ""),
+                    messages=messages,
+                )
+                if isinstance(exc, httpx.HTTPStatusError)
+                else {}
+            )
             logger.warning(
-                "Primary provider unavailable. Switching to fallback.",
+                "Primary provider %s failed with %s (status=%s, code=%s, message=%s). "
+                "Switching to fallback.",
+                primary_name,
+                type(exc).__name__,
+                exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None,
+                safe.get("code"),
+                safe.get("message"),
                 exc_info=True,
             )
-            await self.circuit_breaker.record_failure()
+            await self.circuit_breaker.record_failure(primary_token)
             if isinstance(exc, (ProviderQuotaExhaustedError, ProviderRateLimitedError)):
-                self._unavailable_providers.add(primary_name)
+                await self.record_provider_failure(primary_name, exc)
             await report(self.primary, "error", error=str(exc))
             if self.fallback is None:
                 raise
             return await use_fallback()
 
-        await self.circuit_breaker.record_success()
+        await self.circuit_breaker.record_success(primary_token)
         await report(self.primary, "ok", result=response)
         return response
 
@@ -981,12 +1141,14 @@ class LLMGateway:
 
         async def stream_provider(provider, fallback_used: bool):
             is_fallback = provider is self.fallback and fallback_used
-            fallback_name = getattr(provider, "name", "")
+            provider_name = getattr(provider, "name", "")
+            fallback_token = None
             if is_fallback:
-                if fallback_name in self._unavailable_providers:
-                    raise CircuitOpenError(f"{fallback_name} is unavailable for this run")
-                if not await self.fallback_circuit_breaker.allow_request():
-                    raise CircuitOpenError(f"{fallback_name} circuit is open")
+                if await self.is_provider_blocked(provider_name):
+                    raise CircuitOpenError(f"{provider_name} is unavailable for this run")
+                allowed, fallback_token = await self.fallback_circuit_breaker.acquire_request()
+                if not allowed:
+                    raise CircuitOpenError(f"{provider_name} circuit is open")
 
             try:
                 async for item in provider.stream(messages, temperature):
@@ -1005,12 +1167,35 @@ class LLMGateway:
                     else:
                         yield item
 
+            except asyncio.CancelledError:
+                if is_fallback:
+                    await self.fallback_circuit_breaker.reset_probe(fallback_token)
+                raise
             except Exception as exc:
                 if is_fallback:
                     if isinstance(exc, (ProviderQuotaExhaustedError, ProviderRateLimitedError)):
-                        self._unavailable_providers.add(fallback_name)
+                        await self.record_provider_failure(provider_name, exc)
                     elif is_temporary_provider_error(exc):
-                        await self.fallback_circuit_breaker.record_failure()
+                        await self.fallback_circuit_breaker.record_failure(fallback_token)
+                safe = (
+                    _safe_provider_error_details(
+                        exc.response,
+                        api_key=getattr(provider, "api_key", ""),
+                        messages=messages,
+                    )
+                    if isinstance(exc, httpx.HTTPStatusError)
+                    else {}
+                )
+                logger.warning(
+                    "%s provider %s streaming failed with %s (status=%s, code=%s, message=%s)",
+                    "Fallback" if is_fallback else "Primary",
+                    provider_name,
+                    type(exc).__name__,
+                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None,
+                    safe.get("code"),
+                    safe.get("message"),
+                    exc_info=True,
+                )
                 await report(
                     provider,
                     "error",
@@ -1020,9 +1205,21 @@ class LLMGateway:
                 raise
             else:
                 if is_fallback:
-                    await self.fallback_circuit_breaker.record_success()
+                    await self.fallback_circuit_breaker.record_success(fallback_token)
 
-        if not await self.circuit_breaker.allow_request():
+        primary_name = getattr(self.primary, "name", "")
+        if await self.is_provider_blocked(primary_name):
+            logger.warning("Primary circuit is open. Using fallback.")
+
+            if self.fallback is None:
+                raise CircuitOpenError("Primary circuit is open and no fallback is configured")
+
+            async for item in stream_provider(self.fallback, True):
+                yield item
+            return
+
+        primary_allowed, primary_token = await self.circuit_breaker.acquire_request()
+        if not primary_allowed:
             logger.warning("Primary circuit is open. Using fallback.")
 
             if self.fallback is None:
@@ -1040,9 +1237,13 @@ class LLMGateway:
         try:
             first_item = await primary_stream.__anext__()
 
+        except asyncio.CancelledError:
+            await self.circuit_breaker.reset_probe(primary_token)
+            raise
+
         except StopAsyncIteration:
             error = "Primary provider returned an empty stream."
-            await self.circuit_breaker.record_failure()
+            await self.circuit_breaker.record_failure(primary_token)
             await report(self.primary, "error", error=error)
 
             if self.fallback is None:
@@ -1055,11 +1256,27 @@ class LLMGateway:
             return
 
         except Exception as exc:
+            safe = (
+                _safe_provider_error_details(
+                    exc.response,
+                    api_key=getattr(self.primary, "api_key", ""),
+                    messages=messages,
+                )
+                if isinstance(exc, httpx.HTTPStatusError)
+                else {}
+            )
             logger.warning(
-                "Primary streaming failed before first chunk.",
+                "Primary streaming failed before first chunk "
+                "(error=%s, status=%s, code=%s, message=%s).",
+                type(exc).__name__,
+                exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None,
+                safe.get("code"),
+                safe.get("message"),
                 exc_info=True,
             )
-            await self.circuit_breaker.record_failure()
+            await self.circuit_breaker.record_failure(primary_token)
+            if isinstance(exc, (ProviderQuotaExhaustedError, ProviderRateLimitedError)):
+                await self.record_provider_failure(primary_name, exc)
             await report(
                 self.primary,
                 "error",
@@ -1073,7 +1290,7 @@ class LLMGateway:
                 yield item
             return
 
-        await self.circuit_breaker.record_success()
+        await self.circuit_breaker.record_success(primary_token)
 
         yield first_item
 
@@ -1103,6 +1320,8 @@ def create_gateway(
     max_tokens: int | None = None,
     groq_only: bool = False,
     gemini_only: bool = False,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> LLMGateway:
     """Create the configured Groq/Gemini gateway.
 
@@ -1112,6 +1331,7 @@ def create_gateway(
     if groq_only and gemini_only:
         raise ValueError("groq_only and gemini_only cannot both be enabled")
 
+    effective_timeout = timeout if timeout is not None else settings.llm_timeout_seconds
     shared_pacer = RequestPacer(requests_per_minute) if requests_per_minute is not None else None
     provider_rpm = None if shared_pacer is not None else requests_per_minute
     if gemini_only:
@@ -1120,10 +1340,11 @@ def create_gateway(
             base_url=settings.llm_primary_base_url,
             api_key=settings.gemini_api_key,
             model=settings.llm_primary_model,
-            timeout=settings.llm_timeout_seconds,
+            timeout=effective_timeout,
             requests_per_minute=provider_rpm,
             max_tokens=max_tokens,
             request_pacer=shared_pacer,
+            max_retries=max_retries,
         )
     else:
         primary = OpenAICompatProvider(
@@ -1131,10 +1352,11 @@ def create_gateway(
             base_url=settings.llm_fallback_base_url,
             api_key=settings.groq_api_key,
             model=settings.llm_fallback_model,
-            timeout=settings.llm_timeout_seconds,
+            timeout=effective_timeout,
             requests_per_minute=provider_rpm,
             max_tokens=max_tokens,
             request_pacer=shared_pacer,
+            max_retries=max_retries,
         )
 
     fallback = None
@@ -1144,10 +1366,11 @@ def create_gateway(
             base_url=settings.llm_primary_base_url,
             api_key=settings.gemini_api_key,
             model=settings.llm_primary_model,
-            timeout=settings.llm_timeout_seconds,
+            timeout=effective_timeout,
             requests_per_minute=provider_rpm,
             max_tokens=max_tokens,
             request_pacer=shared_pacer,
+            max_retries=max_retries,
         )
 
     return LLMGateway(
