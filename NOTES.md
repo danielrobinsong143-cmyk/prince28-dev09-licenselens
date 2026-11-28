@@ -794,3 +794,19 @@ When the worker process was terminated mid-batch, items left in `running` status
 1. **Decoupling ingestion from HTTP cycles**: Transitioning from synchronous extraction to an asynchronous job queue (ARQ + Redis) allows the API to respond immediately (`202 Accepted`) while background workers handle rate limiting, timeouts, and LLM latency without dropping client connections.
 2. **Crash recovery must be state-aware**: A job queue restart loses in-flight execution state. True resilience requires reconciling the database source of truth (PostgreSQL) against Redis state on startup, distinguishing between genuinely active workers and abandoned jobs using `arq:in-progress:` keys.
 3. **Concurrency safety requires multi-layer coordination**: Preventing duplicate execution across distributed workers requires row-level locking (`FOR UPDATE SKIP LOCKED`) in PostgreSQL to avoid race conditions during recovery, alongside Redis atomic transaction checks (`WATCH`/`MULTI`) during enqueuing.
+
+### Live Crash-Recovery Verification (28 Nov 2026)
+- **Execution Command**: `uv run arq licenselens.workers.main.WorkerSettings --burst`
+- **Item 46 Recovery**:
+  - Previous status: `running`
+  - Attempts: `3` (reached `max_tries = 3`)
+  - New status: `failed`
+  - Previous error preserved: `gave up: started 3 times and never finished; last error: try 2 failed: CircuitOpenError: gemini circuit is open`
+- **Final Job Counts (Job `390d5b35446a4789b00c39560ac2535f`)**:
+  - Done: 10
+  - Failed: 10
+  - Running: 0
+  - Queued: 0
+  - Total: 20
+- **Deduplication & Item Integrity**: No new ingestion job was created, no completed items were reprocessed, and no items were re-enqueued into Redis.
+- **Verification Note**: Crash recovery was verified live against PostgreSQL. 10 of the 20 items failed due to processing and upstream LLM provider errors (rate limits, 503 service unavailable, timeouts, and circuit-breaker openings); crash recovery correctly resolved the interrupted state without falsely claiming all 20 succeeded.
