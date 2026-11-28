@@ -1078,3 +1078,81 @@ async def test_worker_startup_recovers_crashed_items_and_requeues_open(tmp_path)
     assert recovered_calls[0] == (3, mock_redis)
     assert len(open_calls) == 1
     mock_redis.enqueue_job.assert_awaited_once_with("ingest_document", 20, _job_id="ingest:20")
+
+
+def test_worker_module_importable_without_environment(monkeypatch, request):
+    """Importing workers.main does not eagerly evaluate Settings or require .env/env vars."""
+    import importlib
+    import os
+
+    from pydantic import ValidationError
+
+    import licenselens.config
+    import licenselens.workers.main
+
+    orig_config = dict(licenselens.config.Settings.model_config)
+
+    def cleanup():
+        licenselens.config.Settings.model_config = orig_config
+        licenselens.config.get_settings.cache_clear()
+        importlib.reload(licenselens.workers.main)
+        licenselens.config.get_settings.cache_clear()
+
+    request.addfinalizer(cleanup)
+
+    # Ensure get_settings cache is cleared and env is stripped of required settings
+    monkeypatch.setattr(
+        licenselens.config.Settings,
+        "model_config",
+        {**licenselens.config.Settings.model_config, "env_file": None},
+    )
+    for key in list(os.environ.keys()):
+        if key.startswith("APP_") or "DATABASE" in key or "REDIS" in key:
+            monkeypatch.delenv(key, raising=False)
+    licenselens.config.get_settings.cache_clear()
+
+    # Re-importing / reloading workers.main succeeds without raising ValidationError
+    reloaded = importlib.reload(licenselens.workers.main)
+    assert "WorkerSettings" in dir(reloaded)
+
+    # Accessing WorkerSettings triggers runtime settings evaluation
+    # and fails when required env variables are missing.
+    with pytest.raises(ValidationError):
+        _ = reloaded.WorkerSettings
+
+
+def test_worker_settings_evaluates_with_valid_settings(monkeypatch, request):
+    """Accessing WorkerSettings dynamically produces worker options when settings are valid."""
+    import licenselens.config
+    import licenselens.workers.main
+    from licenselens.config import Settings
+
+    valid_settings = Settings(
+        app_env="ci",
+        database_url="postgresql+asyncpg://localhost:5432/testdb",
+        _env_file=None,
+    )
+    request.addfinalizer(licenselens.config.get_settings.cache_clear)
+    monkeypatch.setattr("licenselens.workers.main.get_settings", lambda: valid_settings)
+    monkeypatch.setattr("licenselens.config.get_settings", lambda: valid_settings)
+
+    opts = licenselens.workers.main.WorkerSettings
+    assert isinstance(opts, dict)
+    assert opts["functions"] == [licenselens.workers.main.ingest_document]
+    assert opts["on_startup"] is licenselens.workers.main.startup
+    assert opts["on_shutdown"] is licenselens.workers.main.shutdown
+    assert opts["max_jobs"] == valid_settings.ingest_concurrency
+
+
+def test_worker_getattr_raises_for_unknown_attribute():
+    import licenselens.workers.main
+
+    with pytest.raises(AttributeError, match="has no attribute 'UnknownAttr'"):
+        _ = licenselens.workers.main.UnknownAttr
+
+
+def test_global_settings_and_config_remain_unmodified():
+    """Verify earlier tests did not corrupt global Settings.model_config or settings cache."""
+    from licenselens.config import Settings
+
+    assert Settings.model_config.get("env_file") == ".env"

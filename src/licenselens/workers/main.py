@@ -115,5 +115,13 @@ async def run_embedded(settings: Settings) -> None:
         await worker.close()
 
 
-# What the `arq` command reads. Built from .env like everything else.
-WorkerSettings = worker_options(get_settings())
+# What the `arq` command reads. Evaluated dynamically on access so importing this
+# module does not eagerly require environment variables or a local .env file.
+def __getattr__(name: str):
+    if name == "WorkerSettings":
+        return worker_options(get_settings())
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:
+    return sorted([*globals().keys(), "WorkerSettings"])
